@@ -1,0 +1,5 @@
+error: packet may not have multiple payloads
+  --> $DIR/multiple_payload.rs:16:7
+   |
+16 |     #[payload]
+   |       ^^^^^^^

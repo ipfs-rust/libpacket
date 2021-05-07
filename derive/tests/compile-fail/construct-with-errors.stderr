@@ -1,0 +1,11 @@
+error: #[construct_with] must have at least one argument
+  --> $DIR/construct-with-errors.rs:18:7
+   |
+18 |     #[construct_with()]
+   |       ^^^^^^^^^^^^^^
+
+error: #[construct_with] should be of the form #[construct_with(<types>)]
+  --> $DIR/construct-with-errors.rs:26:22
+   |
+26 |     #[construct_with("test")]
+   |                      ^^^^^^

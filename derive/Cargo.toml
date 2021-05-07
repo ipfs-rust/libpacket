@@ -1,0 +1,26 @@
+[package]
+name = "libpacket-derive"
+version = "0.1.0"
+authors = ["Robert Clipsham <robert@octarineparrot.com>", "Pierre Chifflier <chifflier@wzdftpd.net>"]
+edition = "2018"
+license = "MIT/Apache-2.0"
+homepage = "https://github.com/libpnet/libpnet"
+repository = "https://github.com/libpnet/libpnet"
+description = "Automatic bit manipulation for binary data formats"
+readme = "../README.md"
+keywords = ["networking", "bitfields", "packet", "protocol"]
+categories = ["network-programming", "parsing"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1.0.26"
+quote = "1.0.9"
+regex = "1.5.4"
+syn = { version = "1.0.72", features = ["full"] }
+
+[dev-dependencies]
+libpacket-core = { path = "../core" }
+libpacket-derive = { path = "." }
+trybuild = "1.0.42"

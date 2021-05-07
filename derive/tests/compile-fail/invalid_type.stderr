@@ -1,0 +1,5 @@
+error: non-primitive field types must specify #[construct_with]
+  --> $DIR/invalid_type.rs:13:16
+   |
+13 |     pub field: String,
+   |                ^^^^^^

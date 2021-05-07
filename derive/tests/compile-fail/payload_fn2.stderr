@@ -1,0 +1,14 @@
+error: unknown attribute: payload
+  --> $DIR/payload_fn2.rs:14:7
+   |
+14 |     #[payload(length_fn = "length_of_payload")]
+   |       ^^^^^^^
+
+error[E0412]: cannot find type `PacketWithPayload2Packet` in this scope
+  --> $DIR/payload_fn2.rs:18:26
+   |
+12 | pub struct PacketWithPayload2 {
+   | ----------------------------- similarly named struct `PacketWithPayload2` defined here
+...
+18 | fn length_of_payload(_: &PacketWithPayload2Packet) -> usize {
+   |                          ^^^^^^^^^^^^^^^^^^^^^^^^ help: a struct with a similar name exists: `PacketWithPayload2`
