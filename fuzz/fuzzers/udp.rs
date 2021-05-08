@@ -1,15 +1,13 @@
 #![no_main]
-extern crate libfuzzer_sys;
-extern crate pnet;
 
-use pnet::packet::Packet;
-use pnet::packet::udp::UdpPacket;
+use libfuzzer_sys::fuzz_target;
+use libpacket::udp::UdpPacket;
+use libpacket::Packet;
 
-#[export_name="rust_fuzzer_test_input"]
-pub extern fn go(data: &[u8]) {
-	if let Some(udp) = UdpPacket::new(data) {
-		for b in udp.payload().iter() {
-			*b;
-		}
-	}
-}
+fuzz_target!(|data: &[u8]| {
+    if let Some(udp) = UdpPacket::new(data) {
+        for b in udp.payload().iter() {
+            drop(*b);
+        }
+    }
+});

@@ -1,32 +1,28 @@
 #![no_main]
-extern crate libfuzzer_sys;
-extern crate pnet;
 
-use pnet::packet::gre::GrePacket;
+use libfuzzer_sys::fuzz_target;
+use libpacket::gre::GrePacket;
 
-#[export_name="rust_fuzzer_test_input"]
-pub extern fn go(data: &[u8]) {
-	if let Some(gre) = GrePacket::new(data) {
-		for b in gre.get_checksum_raw().iter() {
-			*b;
-		}
+fuzz_target!(|data: &[u8]| {
+    if let Some(gre) = GrePacket::new(data) {
+        for b in gre.get_checksum_raw().iter() {
+            drop(*b);
+        }
 
-		for b in gre.get_offset_raw().iter() {
-			*b;
-		}
+        for b in gre.get_offset_raw().iter() {
+            drop(*b);
+        }
 
-		for b in gre.get_key_raw().iter() {
-			*b;
-		}
+        for b in gre.get_key_raw().iter() {
+            drop(*b);
+        }
 
+        for b in gre.get_sequence_raw().iter() {
+            drop(*b);
+        }
 
-		for b in gre.get_sequence_raw().iter() {
-			*b;
-		}
-
-
-		for b in gre.get_routing_raw().iter() {
-			*b;
-		}
-	}
-}
+        for b in gre.get_routing_raw().iter() {
+            drop(*b);
+        }
+    }
+});
