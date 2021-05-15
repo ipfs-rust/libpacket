@@ -138,7 +138,6 @@
 #![deny(missing_docs)]
 
 use proc_macro::TokenStream;
-use quote::quote;
 use syn::{parse_macro_input, DeriveInput, Visibility};
 
 mod decorator;
@@ -166,18 +165,4 @@ pub fn derive_packet(input: TokenStream) -> TokenStream {
         Ok(ts) => ts.into(),
         Err(e) => e.to_compile_error().into(),
     }
-}
-
-/// The entry point for the `packet` proc_macro_attribute
-#[proc_macro_attribute]
-pub fn packet(_attrs: TokenStream, code: TokenStream) -> TokenStream {
-    // let _attrs = parse_macro_input!(attrs as AttributeArgs);
-    let input = parse_macro_input!(code as DeriveInput);
-    // enhancement: if input already has Clone and/or Debug, do not add them
-    let s = quote! {
-        #[derive(libpacket_derive::Packet, Clone, Debug)]
-        #[allow(unused_attributes)]
-        #input
-    };
-    s.into()
 }

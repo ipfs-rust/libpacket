@@ -175,17 +175,7 @@ fn make_packet(s: &syn::DataStruct, name: String) -> Result<Packet, Error> {
                 }
                 syn::Meta::NameValue(ref name_value) => {
                     if let Some(ident) = name_value.path.get_ident() {
-                        if ident == "length_fn" {
-                            if let syn::Lit::Str(ref s) = name_value.lit {
-                                packet_length = Some(s.value() + "(&_self.to_immutable())");
-                            } else {
-                                return Err(Error::new(
-                                    name_value.path.span(),
-                                    "#[length_fn] should be used as #[length_fn = \
-                                               \"name_of_function\"]",
-                                ));
-                            }
-                        } else if ident == "length" {
+                        if ident == "length" {
                             // get literal
                             if let syn::Lit::Str(ref s) = name_value.lit {
                                 let field_names: Vec<String> = sfields
@@ -208,7 +198,7 @@ fn make_packet(s: &syn::DataStruct, name: String) -> Result<Packet, Error> {
                                 let tt_tokens: Vec<_> = tts.into_iter().collect();
                                 // Parse and replace fields
                                 let tokens_packet = parse_length_expr(&tt_tokens, &field_names)?;
-                                let parsed = quote! { #(#tokens_packet)* };
+                                let parsed = quote! { (#(#tokens_packet)*) as usize };
                                 packet_length = Some(parsed.to_string());
                             } else {
                                 return Err(Error::new(
@@ -285,8 +275,7 @@ fn make_packet(s: &syn::DataStruct, name: String) -> Result<Packet, Error> {
                 if !is_payload && packet_length.is_none() {
                     return Err(Error::new(
                         field.ty.span(),
-                        "variable length field must have #[length = \"\"] or \
-                                  #[length_fn = \"\"] attribute",
+                        "variable length field must specify #[length = \"\"]",
                     ));
                 }
             }
@@ -333,33 +322,18 @@ fn parse_length_expr(
     use proc_macro2::TokenTree;
     let error_msg = "Only field names, constants, integers, basic arithmetic expressions \
                      (+ - * / %) and parentheses are allowed in the \"length\" attribute";
-    let mut needs_constant: Option<Span> = None;
-    let mut has_constant = false;
+
     let mut tokens_packet = Vec::new();
     for tt_token in tts {
         match tt_token {
             TokenTree::Ident(name) => {
-                if name.to_string().chars().any(|c| c.is_lowercase()) {
-                    if field_names.contains(&name.to_string()) {
-                        let tts: syn::Expr =
-                            syn::parse_str(&format!("_self.get_{}() as usize", name))?;
-                        let mut modified_packet_tokens: Vec<_> =
-                            tts.to_token_stream().into_iter().collect();
-                        tokens_packet.append(&mut modified_packet_tokens);
-                    } else {
-                        if let None = needs_constant {
-                            needs_constant = Some(tt_token.span());
-                        }
-                        tokens_packet.push(tt_token.clone());
-                    }
-                }
-                // Constants are only recognized if they are all uppercase
-                else {
-                    let tts: syn::Expr = syn::parse_str(&format!("{} as usize", name))?;
+                if field_names.contains(&name.to_string()) {
+                    let tts: syn::Expr = syn::parse_str(&format!("_self.get_{}()", name))?;
                     let mut modified_packet_tokens: Vec<_> =
                         tts.to_token_stream().into_iter().collect();
                     tokens_packet.append(&mut modified_packet_tokens);
-                    has_constant = true;
+                } else {
+                    tokens_packet.push(tt_token.clone());
                 }
             }
             TokenTree::Punct(_) => {
@@ -384,15 +358,6 @@ fn parse_length_expr(
                 tokens_packet.push(tt);
             }
         };
-    }
-
-    if let Some(span) = needs_constant {
-        if !has_constant {
-            return Err(Error::new(
-                span,
-                "Field name must be a member of the struct and not the field itself",
-            ));
-        }
     }
 
     Ok(tokens_packet)
@@ -421,7 +386,7 @@ fn generate_packet_impl(
                 if idx != packet.fields.len() - 1 {
                     return Err(Error::new(
                         field.span,
-                        "#[payload] must specify a #[length_fn], unless it is the \
+                        "#[payload] must specify a #[length], unless it is the \
                                         last field of a packet",
                     ));
                 }
@@ -1066,7 +1031,7 @@ fn handle_vector_field(
     if !field.is_payload && !field.packet_length.is_some() {
         return Err(Error::new(
             field.span,
-            "variable length field must have #[length_fn = \"\"] attribute",
+            "variable length field must have #[length = \"\"] attribute",
         ));
     }
     if !field.is_payload {

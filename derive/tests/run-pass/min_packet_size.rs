@@ -20,29 +20,19 @@ pub struct ByteAligned {
 #[derive(Packet)]
 pub struct ByteAlignedWithVariableLength {
     banana: u16be,
-    #[length_fn = "length_fn1"]
+    #[length = "0"]
     #[payload]
     payload: Vec<u8>,
 }
-
-fn length_fn1(_: &ByteAlignedWithVariableLengthPacket) -> usize {
-    unimplemented!()
-}
-
 
 #[derive(Packet)]
 pub struct ByteAlignedWithVariableLengthAndPayload {
     banana: u32be,
-    #[length_fn = "length_fn2"]
+    #[length = "0"]
     var_length: Vec<u8>,
     #[payload]
     payload: Vec<u8>,
 }
-
-fn length_fn2(_: &ByteAlignedWithVariableLengthAndPayloadPacket) -> usize {
-    unimplemented!()
-}
-
 
 #[derive(Packet)]
 pub struct NonByteAligned {
@@ -57,30 +47,20 @@ pub struct NonByteAligned {
 pub struct NonByteAlignedWithVariableLength {
     banana: u11be,
     tomato: u21be,
-    #[length_fn = "length_fn3"]
+    #[length = "0"]
     #[payload]
     payload: Vec<u8>,
 }
-
-fn length_fn3(_: &NonByteAlignedWithVariableLengthPacket) -> usize {
-    unimplemented!()
-}
-
 
 #[derive(Packet)]
 pub struct NonByteAlignedWithVariableLengthAndPayload {
     banana: u7,
     tomato: u9be,
-    #[length_fn = "length_fn4"]
+    #[length = "0"]
     var_length: Vec<u8>,
     #[payload]
     payload: Vec<u8>,
 }
-
-fn length_fn4(_: &NonByteAlignedWithVariableLengthAndPayloadPacket) -> usize {
-    unimplemented!()
-}
-
 
 fn main() {
     assert_eq!(ByteAlignedPacket::minimum_packet_size(), 1);

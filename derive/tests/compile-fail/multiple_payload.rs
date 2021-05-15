@@ -10,7 +10,7 @@ use libpacket_derive::Packet;
 
 #[derive(Packet)]
 pub struct PacketWithPayload {
-    #[length_fn = ""]
+    #[length = "0"]
     #[payload]
     payload1: Vec<u8>,
     #[payload]

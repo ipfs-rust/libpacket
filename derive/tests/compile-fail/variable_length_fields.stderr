@@ -1,4 +1,4 @@
-error: variable length field must have #[length = ""] or #[length_fn = ""] attribute
+error: variable length field must specify #[length = ""]
   --> $DIR/variable_length_fields.rs:14:17
    |
 14 |     var_length: Vec<u8>,

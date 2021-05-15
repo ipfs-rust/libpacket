@@ -13,14 +13,14 @@ use libpacket_derive::Packet;
 pub struct Mqtt {
     source: u16be,
     destination: u16be,
-    #[length_fn="mqtt_options_length"]
+    #[length = "mqtt_options_length()"]
     options: Vec<u8>,
     t: u8,
     #[payload]
     payload: Vec<u8>,
 }
 
-fn mqtt_options_length(_: &MqttPacket) -> usize {
+fn mqtt_options_length() -> usize {
     0
 }
 

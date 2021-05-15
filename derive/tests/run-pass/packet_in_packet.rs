@@ -13,7 +13,7 @@ pub struct PacketWithPayload {
     banana: u8,
     length: u8,
     header_length: u8,
-    #[length_fn = "length_fn"]
+    #[length = "length_fn(header_length)"]
     packet_option: Vec<PacketOption>,
     #[payload]
     payload: Vec<u8>,
@@ -23,17 +23,17 @@ pub struct PacketWithPayload {
 pub struct PacketOption {
     pineapple: u8,
     length: u8,
-    #[length_fn = "option_length_fn"]
+    #[length = "option_length_fn(length)"]
     #[payload]
     payload: Vec<u8>,
 }
 
-fn length_fn(packet_with_payload: &PacketWithPayloadPacket) -> usize {
-    packet_with_payload.get_header_length() as usize - 2
+fn length_fn(header_length: u8) -> usize {
+    header_length as usize - 2
 }
 
-fn option_length_fn(packet_option: &PacketOptionPacket) -> usize {
-    packet_option.get_length() as usize - 2
+fn option_length_fn(length: u8) -> usize {
+    length as usize - 2
 }
 
 fn main() {

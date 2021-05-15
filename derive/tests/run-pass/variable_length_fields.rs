@@ -10,25 +10,12 @@ use libpacket_core::types::*;
 use libpacket_derive::Packet;
 
 #[derive(Packet)]
-pub struct PacketWithPayload {
-    banana: u8,
-    #[length_fn = "length_fn"]
-    var_length: Vec<u8>,
-    #[payload]
-    payload: Vec<u8>,
-}
-
-#[derive(Packet)]
 pub struct PacketWithU16 {
     length: u8,
     #[length = "length"]
     data: Vec<u16be>,
     #[payload]
     payload: Vec<u8>,
-}
-
-fn length_fn(_: &PacketWithPayloadPacket) -> usize {
-    unimplemented!()
 }
 
 fn main() {
