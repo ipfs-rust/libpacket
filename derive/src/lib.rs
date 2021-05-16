@@ -187,6 +187,5 @@ fn generate_packet(s: &syn::DataStruct, name: String) -> Result<proc_macro2::Tok
         #ts_converters
         #ts_debug_impls
     };
-    //println!("{}", tts.to_string());
     Ok(tts)
 }

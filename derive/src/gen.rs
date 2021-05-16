@@ -1,5 +1,6 @@
 // Copyright (c) 2015 Robert Clipsham <robert@octarineparrot.com>
 // Copyright (c) 2021 Pierre Chifflier <chifflier@wzdftpd.net>
+// Copyright (c) 2021 David Craven <david@craven.ch>
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -49,8 +50,8 @@ pub fn packet_impls(
     ),
     Error,
 > {
-    let (p, bounds, size) = packet_impl(packet, false, packet.packet_name())?;
-    let (p_mut, _, _) = packet_impl(packet, true, packet.packet_name())?;
+    let (p, bounds, size) = packet_impl(packet, false)?;
+    let (p_mut, _, _) = packet_impl(packet, true)?;
     let tokens = quote! {
         #p
 
@@ -71,7 +72,6 @@ fn current_offset(bit_offset: usize, offset_fns: &[String]) -> proc_macro2::Toke
 fn packet_impl(
     packet: &Packet,
     mutable: bool,
-    name: String,
 ) -> Result<
     (
         proc_macro2::TokenStream,
@@ -90,6 +90,11 @@ fn packet_impl(
         lower: quote!(0),
         upper: quote!(0),
     };
+    let name = if mutable {
+        format_ident!("{}", packet.packet_name_mut())
+    } else {
+        format_ident!("{}", packet.packet_name())
+    };
     for field in &packet.fields {
         let field_name = format_ident!("{}", field.name);
         let get_field_name = format_ident!("get_{}", field.name);
@@ -99,13 +104,13 @@ fn packet_impl(
             let packet_length = syn::parse_str::<syn::Expr>(&packet_length)?;
             quote!(#packet_length)
         } else {
-            quote!(0)
+            quote!(self.packet.len())
         };
         if field.is_payload {
             let upper_bound = if field.packet_length.is_some() {
                 quote!(#co + #packet_length)
             } else {
-                quote!(0)
+                quote!(self.packet.len())
             };
             payload_bounds = PayloadBounds {
                 lower: co.clone(),
@@ -199,7 +204,7 @@ fn packet_impl(
                             }
                         } else {
                             // e.g. Vec<u16> -> Vec<u8>
-                            let sop = gen_set_ops(&to_mutator(&ops));
+                            let sop = gen_set_ops("self.packet", &to_mutator(&ops));
                             quote! {
                                 let mut co = current_offset;
                                 for i in 0..vals.len() {
@@ -240,7 +245,11 @@ fn packet_impl(
                             #[allow(trivial_numeric_casts)]
                             #[cfg_attr(feature = "clippy", allow(used_underscore_binding))]
                             pub fn #get_name(&self) -> Vec<#inner_ty> {
-                                self.get_name_iter().collect::<Vec<_>>()
+                                use libpacket_core::FromPacket;
+                                self
+                                    .#get_name_iter()
+                                    .map(|packet| packet.from_packet())
+                                    .collect::<Vec<_>>()
                             }
 
                             /// Get the value of the {name} field as iterator
@@ -266,7 +275,7 @@ fn packet_impl(
                                 let mut current_offset = #co;
                                 let end = current_offset + #packet_length;
                                 for val in vals.into_iter() {
-                                    let mut packet = #inner_ty_packet_mut::new(&mut self.packet[current_offset..]).unwrap()
+                                    let mut packet = #inner_ty_packet_mut::new(&mut self.packet[current_offset..]).unwrap();
                                     packet.populate(val);
                                     current_offset += packet.packet_size();
                                     assert!(current_offset <= end);
@@ -276,18 +285,23 @@ fn packet_impl(
                     }
                 }
             }
-            Type::Misc(ref ty) => {
+            Type::Misc(ref ty_str) => {
                 let mut inner_accessors = vec![];
                 let mut inner_mutators = vec![];
                 let mut get_args = vec![];
                 let mut set_args = vec![];
                 let construct_with = field.construct_with.as_ref().expect("construct_with");
+                let ty: syn::Type = syn::parse_str(ty_str)?;
                 for (i, arg) in construct_with.iter().enumerate() {
                     if let Type::Primitive(ref ty_str, size, endianness) = *arg {
                         let ops = operations(bit_offset % 8, size, endianness).unwrap();
                         let arg_name = format!("arg{}", i);
                         let get_arg = format_ident!("get_arg{}", i);
                         let set_arg = format_ident!("set_arg{}", i);
+                        let idx = syn::Index {
+                            index: i as _,
+                            span: proc_macro2::Span::call_site(),
+                        };
                         inner_accessors.push(gen_accessor(
                             &arg_name,
                             &ty_str,
@@ -302,8 +316,8 @@ fn packet_impl(
                             &to_mutator(&ops),
                             Some(&name),
                         ));
-                        get_args.push(quote!(#get_arg(&self)));
-                        set_args.push(quote!(#set_arg(self, vals.#i)));
+                        get_args.push(quote!(#get_arg(self)));
+                        set_args.push(quote!(#set_arg(self, vals.#idx)));
                         bit_offset += size;
                         // Current offset needs to be recalculated for each arg
                         co = current_offset(bit_offset, &offset_fns_packet);
@@ -325,10 +339,9 @@ fn packet_impl(
 
                         let vals = val.to_primitive_values();
 
-                        #(#set_args,)*
+                        #(#set_args);*
                     }
                 });
-                let get_args = &get_args[..get_args.len() - 2];
                 accessors.push(quote! {
                     /// Get the value of the {name} field
                     #[inline]
@@ -368,11 +381,6 @@ fn packet_impl(
         quote!()
     };
 
-    let name = if mutable {
-        format_ident!("{}", packet.packet_name_mut())
-    } else {
-        format_ident!("{}", packet.packet_name())
-    };
     let base_name = format_ident!("{}", &packet.base_name);
     let struct_size = current_offset(bit_offset, &offset_fns_struct[..]);
     let byte_size = if bit_offset % 8 == 0 {
@@ -466,23 +474,24 @@ fn gen_accessor(
     ty_str: &str,
     offset: &proc_macro2::TokenStream,
     operations: &[GetOperation],
-    inner: Option<&str>,
+    inner: Option<&syn::Ident>,
 ) -> proc_macro2::TokenStream {
     let get_name = format_ident!("get_{}", name);
-    let operations = gen_get_ops("self.packet", ty_str, operations);
     let ty: syn::Type = syn::parse_str(ty_str).unwrap();
 
     if let Some(struct_name) = inner {
+        let operations = gen_get_ops("_self.packet", ty_str, operations);
         quote! {
             #[inline(always)]
             #[allow(trivial_numeric_casts, unused_parens)]
             #[cfg_attr(feature = "clippy", allow(used_underscore_binding))]
-            fn #get_name(self: &#struct_name) -> #ty {
+            fn #get_name(_self: &#struct_name) -> #ty {
                 let co = #offset;
                 #operations
             }
         }
     } else {
+        let operations = gen_get_ops("self.packet", ty_str, operations);
         let comment = if let Some((_, endianness, _)) = parse_ty(ty_str) {
             format!(
                 "Get the {name} field. This field is always stored {endian} \
@@ -513,23 +522,24 @@ fn gen_mutator(
     ty_str: &str,
     offset: &proc_macro2::TokenStream,
     operations: &[SetOperation],
-    inner: Option<&str>,
+    inner: Option<&syn::Ident>,
 ) -> proc_macro2::TokenStream {
     let set_name = format_ident!("set_{}", name);
-    let operations = gen_set_ops(operations);
     let ty: syn::Type = syn::parse_str(ty_str).unwrap();
 
     if let Some(struct_name) = inner {
+        let operations = gen_set_ops("_self.packet", operations);
         quote! {
             #[inline]
             #[allow(trivial_numeric_casts)]
             #[cfg_attr(feature = "clippy", allow(used_underscore_binding))]
-            fn #set_name(self: &mut #struct_name, val: #ty) {
+            fn #set_name(_self: &mut #struct_name, val: #ty) {
                 let co = #offset;
                 #operations
             }
         }
     } else {
+        let operations = gen_set_ops("self.packet", operations);
         let comment = if let Some((_, endianness, _)) = parse_ty(ty_str) {
             format!(
                 "Set the {name} field. This field is always stored {endian} \
@@ -677,11 +687,7 @@ pub fn converters(packet: &Packet) -> Result<proc_macro2::TokenStream, Error> {
     for field in &packet.fields {
         let field_name = format_ident!("{}", &field.name);
         let get_field_name = format_ident!("get_{}", &field.name);
-        if let Type::Vector(_) = &field.ty {
-            get_fields.push(quote!(#field_name: self.#get_field_name().to_vec()));
-        } else {
-            get_fields.push(quote!(#field_name: self.#get_field_name()));
-        }
+        get_fields.push(quote!(#field_name: self.#get_field_name()));
     }
     Ok(quote! {
         impl<'p> libpacket_core::FromPacket for #packet_name<'p> {
@@ -741,10 +747,10 @@ pub fn debug_impls(packet: &Packet) -> Result<proc_macro2::TokenStream, Error> {
     })
 }
 
-fn gen_set_ops(operations: &[SetOperation]) -> proc_macro2::TokenStream {
+fn gen_set_ops(name: &str, operations: &[SetOperation]) -> proc_macro2::TokenStream {
     let mut op_strings = String::new();
     for (idx, sop) in operations.iter().enumerate() {
-        let pkt_replace = format!("self.packet[co + {}]", idx);
+        let pkt_replace = format!("{}[co + {}]", name, idx);
         let val_replace = "val";
         let sop = sop
             .to_string()
