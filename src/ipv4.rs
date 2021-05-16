@@ -222,10 +222,7 @@ fn ipv4_options_length(header_length: u8) -> usize {
 
 #[test]
 fn ipv4_options_length_test() {
-    let mut packet = [0u8; 20];
-    let mut ip_header = MutableIpv4Packet::new(&mut packet[..]).unwrap();
-    ip_header.set_header_length(5);
-    assert_eq!(ipv4_options_length(&ip_header.to_immutable()), 0);
+    assert_eq!(ipv4_options_length(5), 0);
 }
 
 fn ipv4_payload_length(total_length: u16, header_length: u8) -> usize {
@@ -234,15 +231,10 @@ fn ipv4_payload_length(total_length: u16, header_length: u8) -> usize {
 
 #[test]
 fn ipv4_payload_length_test() {
-    let mut packet = [0u8; 30];
-    let mut ip_header = MutableIpv4Packet::new(&mut packet[..]).unwrap();
-    ip_header.set_header_length(5);
-    ip_header.set_total_length(20);
-    assert_eq!(ipv4_payload_length(&ip_header.to_immutable()), 0);
+    assert_eq!(ipv4_payload_length(20, 5), 0);
     // just comparing with 0 is prone to false positives in this case.
     // for instance if one forgets to set total_length, one always gets 0
-    ip_header.set_total_length(30);
-    assert_eq!(ipv4_payload_length(&ip_header.to_immutable()), 10);
+    assert_eq!(ipv4_payload_length(30, 5), 10);
 }
 
 /// Represents the IPv4 Option field.
