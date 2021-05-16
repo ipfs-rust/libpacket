@@ -45,42 +45,18 @@ pub struct Gre {
     pub zero_flags: u5,
     pub version: u3,
     pub protocol_type: u16be, // 0x800 for ipv4 [basically an ethertype
-    #[length_fn = "gre_checksum_length"]
+    #[length = "(checksum_present | routing_present) * 2"]
     pub checksum: Vec<U16BE>,
-    #[length_fn = "gre_offset_length"]
+    #[length = "(checksum_present | routing_present) * 2"]
     pub offset: Vec<U16BE>,
-    #[length_fn = "gre_key_length"]
+    #[length = "key_present * 4"]
     pub key: Vec<U32BE>,
-    #[length_fn = "gre_sequence_length"]
+    #[length = "sequence_present * 4"]
     pub sequence: Vec<U32BE>,
-    #[length_fn = "gre_routing_length"]
+    #[length = "if routing_present == 0 { 0 } else { unimplemented!() }"]
     pub routing: Vec<u8>,
     #[payload]
     pub payload: Vec<u8>,
-}
-
-fn gre_checksum_length(gre: &GrePacket) -> usize {
-    (gre.get_checksum_present() | gre.get_routing_present()) as usize * 2
-}
-
-fn gre_offset_length(gre: &GrePacket) -> usize {
-    (gre.get_checksum_present() | gre.get_routing_present()) as usize * 2
-}
-
-fn gre_key_length(gre: &GrePacket) -> usize {
-    gre.get_key_present() as usize * 4
-}
-
-fn gre_sequence_length(gre: &GrePacket) -> usize {
-    gre.get_sequence_present() as usize * 4
-}
-
-fn gre_routing_length(gre: &GrePacket) -> usize {
-    if 0 == gre.get_routing_present() {
-        0
-    } else {
-        panic!("Source routed GRE packets not supported")
-    }
 }
 
 /// `u16be`, but we can't use that directly in a `Vec` :(

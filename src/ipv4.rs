@@ -147,9 +147,9 @@ pub struct Ipv4 {
     pub source: Ipv4Addr,
     #[construct_with(u8, u8, u8, u8)]
     pub destination: Ipv4Addr,
-    #[length_fn = "ipv4_options_length"]
+    #[length = "ipv4_options_length(header_length)"]
     pub options: Vec<Ipv4Option>,
-    #[length_fn = "ipv4_payload_length"]
+    #[length = "ipv4_payload_length(total_length, header_length)"]
     #[payload]
     pub payload: Vec<u8>,
 }
@@ -213,11 +213,11 @@ mod checksum_tests {
     }
 }
 
-fn ipv4_options_length(ipv4: &Ipv4Packet) -> usize {
+fn ipv4_options_length(header_length: u8) -> usize {
     // the header_length unit is the "word"
     // - and a word is made of 4 bytes,
     // - and the header length (without the options) is 5 words long
-    (ipv4.get_header_length() as usize * 4).saturating_sub(20)
+    (header_length as usize * 4).saturating_sub(20)
 }
 
 #[test]
@@ -228,8 +228,8 @@ fn ipv4_options_length_test() {
     assert_eq!(ipv4_options_length(&ip_header.to_immutable()), 0);
 }
 
-fn ipv4_payload_length(ipv4: &Ipv4Packet) -> usize {
-    (ipv4.get_total_length() as usize).saturating_sub(ipv4.get_header_length() as usize * 4)
+fn ipv4_payload_length(total_length: u16, header_length: u8) -> usize {
+    (total_length as usize).saturating_sub(header_length as usize * 4)
 }
 
 #[test]
@@ -252,11 +252,11 @@ pub struct Ipv4Option {
     class: u2,
     #[construct_with(u5)]
     number: Ipv4OptionNumber,
-    #[length_fn = "ipv4_option_length"]
+    #[length = "ipv4_option_length(number)"]
     // The length field is an optional field, using a Vec is a way to implement
     // it
     length: Vec<u8>,
-    #[length_fn = "ipv4_option_payload_length"]
+    #[length = "ipv4_option_payload_length(&length)"]
     #[payload]
     data: Vec<u8>,
 }
@@ -264,16 +264,16 @@ pub struct Ipv4Option {
 /// This function gets the 'length' of the length field of the IPv4Option packet
 /// Few options (EOL, NOP) are 1 bytes long, and then have a length field equal
 /// to 0.
-fn ipv4_option_length(option: &Ipv4OptionPacket) -> usize {
-    match option.get_number() {
+fn ipv4_option_length(number: Ipv4OptionNumber) -> usize {
+    match number {
         Ipv4OptionNumbers::EOL => 0,
         Ipv4OptionNumbers::NOP => 0,
         _ => 1,
     }
 }
 
-fn ipv4_option_payload_length(ipv4_option: &Ipv4OptionPacket) -> usize {
-    match ipv4_option.get_length().first() {
+fn ipv4_option_payload_length(length: &[u8]) -> usize {
+    match length.first() {
         Some(len) => (*len as usize).saturating_sub(2),
         None => 0,
     }

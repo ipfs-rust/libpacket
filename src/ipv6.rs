@@ -43,13 +43,13 @@ pub struct Extension {
     #[construct_with(u8)]
     pub next_header: IpNextHeaderProtocol,
     pub hdr_ext_len: u8,
-    #[length_fn = "ipv6_extension_length"]
+    #[length = "ipv6_extension_length(hdr_ext_len)"]
     #[payload]
     pub options: Vec<u8>,
 }
 
-fn ipv6_extension_length(ext: &ExtensionPacket) -> usize {
-    ext.get_hdr_ext_len() as usize * 8 + 8 - 2
+fn ipv6_extension_length(hdr_ext_len: u8) -> usize {
+    hdr_ext_len as usize * 8 + 8 - 2
 }
 
 /// Represents an IPv6 Hop-by-Hop Options.
@@ -67,13 +67,13 @@ pub struct Routing {
     pub hdr_ext_len: u8,
     pub routing_type: u8,
     pub segments_left: u8,
-    #[length_fn = "routing_extension_length"]
+    #[length = "routing_extension_length(hdr_ext_len)"]
     #[payload]
     pub data: Vec<u8>,
 }
 
-fn routing_extension_length(ext: &RoutingPacket) -> usize {
-    ext.get_hdr_ext_len() as usize * 8 + 8 - 4
+fn routing_extension_length(hdr_ext_len: u8) -> usize {
+    hdr_ext_len as usize * 8 + 8 - 4
 }
 
 /// Represents an IPv6 Fragment Extension.

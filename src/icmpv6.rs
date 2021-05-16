@@ -280,19 +280,9 @@ pub mod ndp {
         pub option_type: NdpOptionType,
         #[construct_with(u8)]
         pub length: u8,
-        #[length_fn = "ndp_option_payload_length"]
+        #[length = "(length * 8).saturating_sub(2)"]
         #[payload]
         pub data: Vec<u8>,
-    }
-
-    /// Calculate a length of a `NdpOption`'s payload.
-    fn ndp_option_payload_length(option: &NdpOptionPacket) -> usize {
-        let len = option.get_length();
-        if len > 0 {
-            ((len * 8) - 2) as usize
-        } else {
-            0
-        }
     }
 
     /// Router Solicitation Message [RFC 4861 § 4.1]
@@ -315,20 +305,10 @@ pub mod ndp {
         pub icmpv6_code: Icmpv6Code,
         pub checksum: u16be,
         pub reserved: u32be,
-        #[length_fn = "rs_ndp_options_length"]
-        pub options: Vec<NdpOption>,
         #[payload]
         #[length = "0"]
         pub payload: Vec<u8>,
-    }
-
-    /// Router Solicit packet calculation for the length of the options.
-    fn rs_ndp_options_length(pkt: &RouterSolicitPacket) -> usize {
-        if pkt.packet().len() > 8 {
-            pkt.packet().len() - 8
-        } else {
-            0
-        }
+        pub options: Vec<NdpOption>,
     }
 
     /// The enumeration of recognized Router Advert flags.
@@ -372,20 +352,10 @@ pub mod ndp {
         pub lifetime: u16be,
         pub reachable_time: u32be,
         pub retrans_time: u32be,
-        #[length_fn = "ra_ndp_options_length"]
-        pub options: Vec<NdpOption>,
         #[payload]
         #[length = "0"]
         pub payload: Vec<u8>,
-    }
-
-    /// Router Advert packet calculation for the length of the options.
-    fn ra_ndp_options_length(pkt: &RouterAdvertPacket) -> usize {
-        if pkt.packet().len() > 16 {
-            pkt.packet().len() - 16
-        } else {
-            0
-        }
+        pub options: Vec<NdpOption>,
     }
 
     /// Neighbor Solicitation Message Format [RFC 4861 § 4.3]
@@ -419,20 +389,10 @@ pub mod ndp {
         pub reserved: u32be,
         #[construct_with(u16, u16, u16, u16, u16, u16, u16, u16)]
         pub target_addr: Ipv6Addr,
-        #[length_fn = "ns_ndp_options_length"]
-        pub options: Vec<NdpOption>,
         #[payload]
         #[length = "0"]
         pub payload: Vec<u8>,
-    }
-
-    /// Neighbor Solicit packet calculation for the length of the options.
-    fn ns_ndp_options_length(pkt: &NeighborSolicitPacket) -> usize {
-        if pkt.packet().len() > 24 {
-            pkt.packet().len() - 24
-        } else {
-            0
-        }
+        pub options: Vec<NdpOption>,
     }
 
     /// Enumeration of recognized Neighbor Advert flags.
@@ -481,20 +441,10 @@ pub mod ndp {
         pub reserved: u24be,
         #[construct_with(u16, u16, u16, u16, u16, u16, u16, u16)]
         pub target_addr: Ipv6Addr,
-        #[length_fn = "na_ndp_options_length"]
-        pub options: Vec<NdpOption>,
         #[payload]
         #[length = "0"]
         pub payload: Vec<u8>,
-    }
-
-    /// Neighbor Advert packet calculation for the length of the options.
-    fn na_ndp_options_length(pkt: &NeighborAdvertPacket) -> usize {
-        if pkt.packet().len() > 24 {
-            pkt.packet().len() - 24
-        } else {
-            0
-        }
+        pub options: Vec<NdpOption>,
     }
 
     /// Redirect Message Format [RFC 4861 § 4.5]
@@ -538,20 +488,10 @@ pub mod ndp {
         pub target_addr: Ipv6Addr,
         #[construct_with(u16, u16, u16, u16, u16, u16, u16, u16)]
         pub dest_addr: Ipv6Addr,
-        #[length_fn = "redirect_options_length"]
-        pub options: Vec<NdpOption>,
         #[payload]
         #[length = "0"]
         pub payload: Vec<u8>,
-    }
-
-    /// Redirect packet calculation for the length of the options.
-    fn redirect_options_length(pkt: &RedirectPacket) -> usize {
-        if pkt.packet().len() > 40 {
-            pkt.packet().len() - 40
-        } else {
-            0
-        }
+        pub options: Vec<NdpOption>,
     }
 
     #[cfg(test)]

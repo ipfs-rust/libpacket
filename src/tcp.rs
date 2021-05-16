@@ -63,7 +63,7 @@ pub struct Tcp {
     pub window: u16be,
     pub checksum: u16be,
     pub urgent_ptr: u16be,
-    #[length_fn = "tcp_options_length"]
+    #[length = "tcp_options_length(data_offset)"]
     pub options: Vec<TcpOption>,
     #[payload]
     pub payload: Vec<u8>,
@@ -106,11 +106,11 @@ pub mod TcpOptionNumbers {
 pub struct TcpOption {
     #[construct_with(u8)]
     number: TcpOptionNumber,
-    #[length_fn = "tcp_option_length"]
+    #[length = "tcp_option_length(number)"]
     // The length field is an optional field, using a Vec is a way to implement
     // it
     length: Vec<u8>,
-    #[length_fn = "tcp_option_payload_length"]
+    #[length = "tcp_option_payload_length(&length)"]
     #[payload]
     data: Vec<u8>,
 }
@@ -195,16 +195,16 @@ impl TcpOption {
 /// Few options (EOL, NOP) are 1 bytes long, and then have a length field equal
 /// to 0.
 #[inline]
-fn tcp_option_length(option: &TcpOptionPacket) -> usize {
-    match option.get_number() {
+fn tcp_option_length(number: TcpOptionNumber) -> usize {
+    match number {
         TcpOptionNumbers::EOL => 0,
         TcpOptionNumbers::NOP => 0,
         _ => 1,
     }
 }
 
-fn tcp_option_payload_length(ipv4_option: &TcpOptionPacket) -> usize {
-    match ipv4_option.get_length_raw().first() {
+fn tcp_option_payload_length(length: &[u8]) -> usize {
+    match length.first() {
         Some(len) if *len >= 2 => *len as usize - 2,
         _ => 0,
     }
@@ -225,9 +225,7 @@ impl PrimitiveValues for TcpOptionNumber {
 }
 
 #[inline]
-fn tcp_options_length(tcp: &TcpPacket) -> usize {
-    let data_offset = tcp.get_data_offset();
-
+fn tcp_options_length(data_offset: u8) -> usize {
     if data_offset > 5 {
         data_offset as usize * 4 - 20
     } else {

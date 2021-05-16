@@ -138,13 +138,15 @@
 #![deny(missing_docs)]
 
 use proc_macro::TokenStream;
-use syn::{parse_macro_input, DeriveInput, Visibility};
+use quote::quote;
+use syn::{parse_macro_input, DeriveInput, Error, Visibility};
 
-mod decorator;
+mod gen;
+mod parse;
 mod util;
 
 /// The entry point for the `derive(Packet)` custom derive
-#[proc_macro_derive(Packet, attributes(construct_with, length, length_fn, payload))]
+#[proc_macro_derive(Packet, attributes(construct_with, length, payload))]
 pub fn derive_packet(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
     // ensure struct is public
@@ -158,11 +160,33 @@ pub fn derive_packet(input: TokenStream) -> TokenStream {
     }
     let name = &ast.ident;
     let s = match &ast.data {
-        syn::Data::Struct(ref s) => decorator::generate_packet(s, name.to_string()),
+        syn::Data::Struct(ref s) => generate_packet(s, name.to_string()),
         _ => panic!("Only structs are supported"),
     };
     match s {
         Ok(ts) => ts.into(),
         Err(e) => e.to_compile_error().into(),
     }
+}
+
+fn generate_packet(s: &syn::DataStruct, name: String) -> Result<proc_macro2::TokenStream, Error> {
+    let packet = parse::packet(s, name)?;
+    let structs = gen::packet_struct(&packet);
+    let (ts_packet_impls, payload_bounds, packet_size) = gen::packet_impls(&packet)?;
+    let ts_size_impls = gen::packet_size_impls(&packet, &packet_size)?;
+    let ts_trait_impls = gen::packet_trait_impls(&packet, &payload_bounds)?;
+    let ts_iterables = gen::iterables(&packet)?;
+    let ts_converters = gen::converters(&packet)?;
+    let ts_debug_impls = gen::debug_impls(&packet)?;
+    let tts = quote! {
+        #structs
+        #ts_packet_impls
+        #ts_size_impls
+        #ts_trait_impls
+        #ts_iterables
+        #ts_converters
+        #ts_debug_impls
+    };
+    println!("{}", tts);
+    Ok(tts)
 }

@@ -18,6 +18,16 @@ pub enum Endianness {
     Host,
 }
 
+impl std::fmt::Display for Endianness {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::Big => write!(f, "big-endian"),
+            Self::Little => write!(f, "little-endian"),
+            Self::Host => write!(f, "host-endian"),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GetOperation {
     mask: u8,
@@ -377,7 +387,7 @@ fn test_get_shiftr() {
 ///
 /// Assumes big endian, and that each byte will be masked, then cast to the next power of two
 /// greater than or equal to size bits before shifting. offset should be in the range [0, 7]
-pub fn operations(offset: usize, size: usize) -> Option<Vec<GetOperation>> {
+pub fn operations(offset: usize, size: usize, endianness: Endianness) -> Option<Vec<GetOperation>> {
     if offset > 7 || size == 0 || size > 64 {
         return None;
     }
@@ -405,14 +415,27 @@ pub fn operations(offset: usize, size: usize) -> Option<Vec<GetOperation>> {
         }
     }
 
-    Some(ops)
+    let target_endianness = if cfg!(target_endian = "little") {
+        Endianness::Little
+    } else {
+        Endianness::Big
+    };
+    Some(
+        if endianness == Endianness::Little
+            || (target_endianness == Endianness::Little && endianness == Endianness::Host)
+        {
+            to_little_endian(ops)
+        } else {
+            ops
+        },
+    )
 }
 
 #[test]
 fn operations_test() {
     type Op = GetOperation;
     assert_eq!(
-        operations(0, 1).unwrap(),
+        operations(0, 1, Endianness::Big).unwrap(),
         vec![Op {
             mask: 0b10000000,
             shiftl: 0,
@@ -420,7 +443,7 @@ fn operations_test() {
         }]
     );
     assert_eq!(
-        operations(0, 2).unwrap(),
+        operations(0, 2, Endianness::Big).unwrap(),
         vec![Op {
             mask: 0b11000000,
             shiftl: 0,
@@ -428,7 +451,7 @@ fn operations_test() {
         }]
     );
     assert_eq!(
-        operations(0, 3).unwrap(),
+        operations(0, 3, Endianness::Big).unwrap(),
         vec![Op {
             mask: 0b11100000,
             shiftl: 0,
@@ -436,7 +459,7 @@ fn operations_test() {
         }]
     );
     assert_eq!(
-        operations(0, 4).unwrap(),
+        operations(0, 4, Endianness::Big).unwrap(),
         vec![Op {
             mask: 0b11110000,
             shiftl: 0,
@@ -444,7 +467,7 @@ fn operations_test() {
         }]
     );
     assert_eq!(
-        operations(0, 5).unwrap(),
+        operations(0, 5, Endianness::Big).unwrap(),
         vec![Op {
             mask: 0b11111000,
             shiftl: 0,
@@ -452,7 +475,7 @@ fn operations_test() {
         }]
     );
     assert_eq!(
-        operations(0, 6).unwrap(),
+        operations(0, 6, Endianness::Big).unwrap(),
         vec![Op {
             mask: 0b11111100,
             shiftl: 0,
@@ -460,7 +483,7 @@ fn operations_test() {
         }]
     );
     assert_eq!(
-        operations(0, 7).unwrap(),
+        operations(0, 7, Endianness::Big).unwrap(),
         vec![Op {
             mask: 0b11111110,
             shiftl: 0,
@@ -468,7 +491,7 @@ fn operations_test() {
         }]
     );
     assert_eq!(
-        operations(0, 8).unwrap(),
+        operations(0, 8, Endianness::Big).unwrap(),
         vec![Op {
             mask: 0b11111111,
             shiftl: 0,
@@ -476,7 +499,7 @@ fn operations_test() {
         }]
     );
     assert_eq!(
-        operations(0, 9).unwrap(),
+        operations(0, 9, Endianness::Big).unwrap(),
         vec![
             Op {
                 mask: 0b11111111,
@@ -491,7 +514,7 @@ fn operations_test() {
         ]
     );
     assert_eq!(
-        operations(0, 10).unwrap(),
+        operations(0, 10, Endianness::Big).unwrap(),
         vec![
             Op {
                 mask: 0b11111111,
@@ -507,7 +530,7 @@ fn operations_test() {
     );
 
     assert_eq!(
-        operations(1, 1).unwrap(),
+        operations(1, 1, Endianness::Big).unwrap(),
         vec![Op {
             mask: 0b01000000,
             shiftl: 0,
@@ -515,7 +538,7 @@ fn operations_test() {
         }]
     );
     assert_eq!(
-        operations(1, 2).unwrap(),
+        operations(1, 2, Endianness::Big).unwrap(),
         vec![Op {
             mask: 0b01100000,
             shiftl: 0,
@@ -523,7 +546,7 @@ fn operations_test() {
         }]
     );
     assert_eq!(
-        operations(1, 3).unwrap(),
+        operations(1, 3, Endianness::Big).unwrap(),
         vec![Op {
             mask: 0b01110000,
             shiftl: 0,
@@ -531,7 +554,7 @@ fn operations_test() {
         }]
     );
     assert_eq!(
-        operations(1, 4).unwrap(),
+        operations(1, 4, Endianness::Big).unwrap(),
         vec![Op {
             mask: 0b01111000,
             shiftl: 0,
@@ -539,7 +562,7 @@ fn operations_test() {
         }]
     );
     assert_eq!(
-        operations(1, 5).unwrap(),
+        operations(1, 5, Endianness::Big).unwrap(),
         vec![Op {
             mask: 0b01111100,
             shiftl: 0,
@@ -547,7 +570,7 @@ fn operations_test() {
         }]
     );
     assert_eq!(
-        operations(1, 6).unwrap(),
+        operations(1, 6, Endianness::Big).unwrap(),
         vec![Op {
             mask: 0b01111110,
             shiftl: 0,
@@ -555,7 +578,7 @@ fn operations_test() {
         }]
     );
     assert_eq!(
-        operations(1, 7).unwrap(),
+        operations(1, 7, Endianness::Big).unwrap(),
         vec![Op {
             mask: 0b01111111,
             shiftl: 0,
@@ -563,7 +586,7 @@ fn operations_test() {
         }]
     );
     assert_eq!(
-        operations(1, 8).unwrap(),
+        operations(1, 8, Endianness::Big).unwrap(),
         vec![
             Op {
                 mask: 0b01111111,
@@ -578,7 +601,7 @@ fn operations_test() {
         ]
     );
     assert_eq!(
-        operations(1, 9).unwrap(),
+        operations(1, 9, Endianness::Big).unwrap(),
         vec![
             Op {
                 mask: 0b01111111,
@@ -593,12 +616,12 @@ fn operations_test() {
         ]
     );
 
-    assert_eq!(operations(8, 1), None);
-    assert_eq!(operations(3, 0), None);
-    assert_eq!(operations(3, 65), None);
+    assert_eq!(operations(8, 1, Endianness::Big), None);
+    assert_eq!(operations(3, 0, Endianness::Big), None);
+    assert_eq!(operations(3, 65, Endianness::Big), None);
 
     assert_eq!(
-        operations(3, 33).unwrap(),
+        operations(3, 33, Endianness::Big).unwrap(),
         vec![
             Op {
                 mask: 0b00011111,
@@ -1049,7 +1072,7 @@ fn test_to_mutator() {
 
 /// Takes a set of operations to get a field in big endian, and converts them to get the field in
 /// little endian.
-pub fn to_little_endian(_ops: Vec<GetOperation>) -> Vec<GetOperation> {
+fn to_little_endian(_ops: Vec<GetOperation>) -> Vec<GetOperation> {
     let mut ops = _ops.clone();
     for (op, be_op) in ops.iter_mut().zip(_ops.iter().rev()) {
         op.shiftl = be_op.shiftl;
