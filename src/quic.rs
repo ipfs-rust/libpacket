@@ -125,9 +125,9 @@ impl<'a> QuicPacket<'a> {
     pub fn remaining(&self) -> &[u8] {
         match self {
             Self::VersionNegotiation(_) => &[],
-            Self::Initial(packet) => packet.payload(),
-            Self::ZeroRtt(packet) => packet.payload(),
-            Self::Handshake(packet) => packet.payload(),
+            Self::Initial(packet) => packet.get_remaining_raw(),
+            Self::ZeroRtt(packet) => packet.get_remaining_raw(),
+            Self::Handshake(packet) => packet.get_remaining_raw(),
             Self::Retry(_) => &[],
             Self::OneRtt(_) => &[],
         }
@@ -191,9 +191,6 @@ pub struct Varint {
     varint_1: u8,
     #[length = "varint_length(varint_1)"]
     varint_2: Vec<u8>,
-    #[payload]
-    #[length = "{ assert_eq!(varint_2.len(), varint_length(varint_1)); 0}"] // TODO
-    payload: Vec<u8>,
 }
 
 #[derive(Debug, Packet)]
@@ -208,7 +205,6 @@ pub struct VersionNegotiation {
     src_id_len: u8,
     #[length = "src_id_len"]
     src_id: Vec<u8>,
-    #[payload]
     supported_versions: Vec<u8>,
 }
 
@@ -242,7 +238,6 @@ pub struct Initial {
     packet_number: Vec<u8>,
     #[length = "varint(length_1, &length_2) - packet_number.len()"]
     frames: Vec<u8>,
-    #[payload]
     remaining: Vec<u8>,
 }
 
@@ -271,7 +266,6 @@ pub struct ZeroRtt {
     packet_number: Vec<u8>,
     #[length = "varint(length_1, &length_2) - packet_number.len()"]
     frames: Vec<u8>,
-    #[payload]
     remaining: Vec<u8>,
 }
 
@@ -300,7 +294,6 @@ pub struct Handshake {
     packet_number: Vec<u8>,
     #[length = "varint(length_1, &length_2) - packet_number.len()"]
     frames: Vec<u8>,
-    #[payload]
     remaining: Vec<u8>,
 }
 
@@ -321,7 +314,6 @@ pub struct Retry {
     src_id_len: u8,
     #[length = "src_id_len"]
     src_id: Vec<u8>,
-    #[payload]
     retry_token: Vec<u8>,
 }
 
@@ -534,7 +526,7 @@ impl<'a> Frame<'a> {
             };
             println!("{:x?}", frame);
             // lifetime of payload is 'a so this is safe to do.
-            packet = unsafe { std::mem::transmute(frame.payload()) };
+            packet = unsafe { std::mem::transmute(frame.remaining()) };
             match (frames.last_mut(), frame) {
                 (Some(Frame::Padding(_, x)), Frame::Padding(_, y)) => *x += y,
                 (_, frame) => frames.push(frame),
@@ -568,7 +560,7 @@ impl<'a> Frame<'a> {
         }
     }
 
-    fn payload(&self) -> &[u8] {
+    pub fn payload(&self) -> &[u8] {
         match self {
             Self::Padding(p, _) => p.payload(),
             Self::Ping(p) => p.payload(),
@@ -592,6 +584,31 @@ impl<'a> Frame<'a> {
             Self::HandshakeDone(p) => p.payload(),
         }
     }
+
+    fn remaining(&self) -> &[u8] {
+        match self {
+            Self::Padding(p, _) => p.get_remaining_raw(),
+            Self::Ping(p) => p.get_remaining_raw(),
+            Self::Ack(p) => p.get_remaining_raw(),
+            Self::ResetStream(p) => p.get_remaining_raw(),
+            Self::StopSending(p) => p.get_remaining_raw(),
+            Self::Crypto(p) => p.get_remaining_raw(),
+            Self::NewToken(p) => p.get_remaining_raw(),
+            Self::Stream(p) => p.get_remaining_raw(),
+            Self::MaxData(p) => p.get_remaining_raw(),
+            Self::MaxStreamData(p) => p.get_remaining_raw(),
+            Self::MaxStreams(p) => p.get_remaining_raw(),
+            Self::DataBlocked(p) => p.get_remaining_raw(),
+            Self::StreamDataBlocked(p) => p.get_remaining_raw(),
+            Self::StreamsBlocked(p) => p.get_remaining_raw(),
+            Self::NewConnectionId(p) => p.get_remaining_raw(),
+            Self::RetireConnectionId(p) => p.get_remaining_raw(),
+            Self::PathChallenge(p) => p.get_remaining_raw(),
+            Self::PathResponse(p) => p.get_remaining_raw(),
+            Self::ConnectionClose(p) => p.get_remaining_raw(),
+            Self::HandshakeDone(p) => p.get_remaining_raw(),
+        }
+    }
 }
 
 impl<'a> std::fmt::Display for Frame<'a> {
@@ -604,7 +621,6 @@ impl<'a> std::fmt::Display for Frame<'a> {
 pub struct Padding {
     #[construct_with(u8)]
     ty: FrameType,
-    #[payload]
     remaining: Vec<u8>,
 }
 
@@ -612,7 +628,6 @@ pub struct Padding {
 pub struct Ping {
     #[construct_with(u8)]
     ty: FrameType,
-    #[payload]
     remaining: Vec<u8>,
 }
 
@@ -636,7 +651,6 @@ pub struct Ack {
     ack_range: Vec<Varint>,
     #[length = "if ty.0 == 0x03 { 3 } else { 0 }"]
     ecn_counts: Vec<Varint>,
-    #[payload]
     remaining: Vec<u8>,
 }
 
@@ -653,7 +667,6 @@ pub struct ResetStream {
     final_size_1: u8,
     #[length = "varint_length(final_size_1)"]
     final_size_2: Vec<u8>,
-    #[payload]
     remaining: Vec<u8>,
 }
 
@@ -667,7 +680,6 @@ pub struct StopSending {
     application_protocol_error_code_1: u8,
     #[length = "varint_length(application_protocol_error_code_1)"]
     application_protocol_error_code_2: Vec<u8>,
-    #[payload]
     remaining: Vec<u8>,
 }
 
@@ -683,7 +695,6 @@ pub struct Crypto {
     length_2: Vec<u8>,
     #[length = "varint(length_1, &length_2)"]
     crypto_payload: Vec<u8>,
-    #[payload]
     remaining: Vec<u8>,
 }
 
@@ -696,7 +707,6 @@ pub struct NewToken {
     token_length_2: Vec<u8>,
     #[length = "varint(token_length_1, &token_length_2)"]
     token: Vec<u8>,
-    #[payload]
     remaining: Vec<u8>,
 }
 
@@ -711,10 +721,9 @@ pub struct Stream {
     offset: Vec<Varint>,
     #[length = "if ty.0 & 0x02 > 0 { 1 } else { 0 }"]
     length: Vec<Varint>,
+    #[payload]
     #[length = "if length.is_empty() { 2000 } else { varint(length[0].varint_1, &length[0].varint_2) }"]
     stream_data: Vec<u8>,
-    #[payload]
-    #[length = "if length.is_empty() { 0 } else { 2000 }"]
     remaining: Vec<u8>,
 }
 
@@ -725,7 +734,6 @@ pub struct MaxData {
     max_data_1: u8,
     #[length = "varint_length(max_data_1)"]
     max_data_2: Vec<u8>,
-    #[payload]
     remaining: Vec<u8>,
 }
 
@@ -739,7 +747,6 @@ pub struct MaxStreamData {
     max_stream_data_1: u8,
     #[length = "varint_length(max_stream_data_1)"]
     max_stream_data_2: Vec<u8>,
-    #[payload]
     remaining: Vec<u8>,
 }
 
@@ -750,7 +757,6 @@ pub struct MaxStreams {
     max_streams_1: u8,
     #[length = "varint_length(max_streams_1)"]
     max_streams_2: Vec<u8>,
-    #[payload]
     remaining: Vec<u8>,
 }
 
@@ -761,7 +767,6 @@ pub struct DataBlocked {
     max_data_1: u8,
     #[length = "varint_length(max_data_1)"]
     max_data_2: Vec<u8>,
-    #[payload]
     remaining: Vec<u8>,
 }
 
@@ -775,7 +780,6 @@ pub struct StreamDataBlocked {
     max_stream_data_1: u8,
     #[length = "varint_length(max_stream_data_1)"]
     max_stream_data_2: Vec<u8>,
-    #[payload]
     remaining: Vec<u8>,
 }
 
@@ -786,7 +790,6 @@ pub struct StreamsBlocked {
     max_streams_1: u8,
     #[length = "varint_length(max_streams_1)"]
     max_streams_2: Vec<u8>,
-    #[payload]
     remaining: Vec<u8>,
 }
 
@@ -805,7 +808,6 @@ pub struct NewConnectionId {
     connection_id: Vec<u8>,
     #[length = "16"]
     stateless_reset_token: Vec<u8>,
-    #[payload]
     remaining: Vec<u8>,
 }
 
@@ -816,7 +818,6 @@ pub struct RetireConnectionId {
     sequence_number_1: u8,
     #[length = "varint_length(sequence_number_1)"]
     sequence_number_2: Vec<u8>,
-    #[payload]
     remaining: Vec<u8>,
 }
 
@@ -826,7 +827,6 @@ pub struct PathChallenge {
     ty: FrameType,
     #[length = "8"]
     data: Vec<u8>,
-    #[payload]
     remaining: Vec<u8>,
 }
 
@@ -836,7 +836,6 @@ pub struct PathResponse {
     ty: FrameType,
     #[length = "8"]
     data: Vec<u8>,
-    #[payload]
     remaining: Vec<u8>,
 }
 
@@ -854,7 +853,6 @@ pub struct ConnectionClose {
     reason_phrase_length_2: Vec<u8>,
     #[length = "varint(reason_phrase_length_1, &reason_phrase_length_2)"]
     reason_phrase: Vec<u8>,
-    #[payload]
     remaining: Vec<u8>,
 }
 
@@ -862,7 +860,6 @@ pub struct ConnectionClose {
 pub struct HandshakeDone {
     #[construct_with(u8)]
     ty: FrameType,
-    #[payload]
     remaining: Vec<u8>,
 }
 
