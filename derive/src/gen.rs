@@ -17,8 +17,8 @@ use syn::Error;
 /// Lower and upper bounds of a payload.
 /// Represented as strings since they may involve functions.
 pub struct PayloadBounds {
-    lower: String,
-    upper: String,
+    lower: proc_macro2::TokenStream,
+    upper: proc_macro2::TokenStream,
 }
 
 pub fn packet_struct(packet: &Packet) -> proc_macro2::TokenStream {
@@ -41,7 +41,14 @@ pub fn packet_struct(packet: &Packet) -> proc_macro2::TokenStream {
 
 pub fn packet_impls(
     packet: &Packet,
-) -> Result<(proc_macro2::TokenStream, PayloadBounds, String), Error> {
+) -> Result<
+    (
+        proc_macro2::TokenStream,
+        PayloadBounds,
+        proc_macro2::TokenStream,
+    ),
+    Error,
+> {
     let (p, bounds, size) = packet_impl(packet, false, packet.packet_name())?;
     let (p_mut, _, _) = packet_impl(packet, true, packet.packet_name())?;
     let tokens = quote! {
@@ -52,18 +59,27 @@ pub fn packet_impls(
     Ok((tokens, bounds, size))
 }
 
-fn current_offset(bit_offset: usize, offset_fns: &[String]) -> String {
+fn current_offset(bit_offset: usize, offset_fns: &[String]) -> proc_macro2::TokenStream {
     let base_offset = bit_offset / 8;
-    offset_fns
+    let offset = offset_fns
         .iter()
-        .fold(base_offset.to_string(), |a, b| a + " + " + &b[..])
+        .fold(base_offset.to_string(), |a, b| a + " + " + &b[..]);
+    let offset = syn::parse_str::<syn::Expr>(&offset).unwrap();
+    quote!(#offset)
 }
 
 fn packet_impl(
     packet: &Packet,
     mutable: bool,
     name: String,
-) -> Result<(proc_macro2::TokenStream, PayloadBounds, String), Error> {
+) -> Result<
+    (
+        proc_macro2::TokenStream,
+        PayloadBounds,
+        proc_macro2::TokenStream,
+    ),
+    Error,
+> {
     let mut bit_offset = 0;
     let mut offset_fns_packet = Vec::new();
     let mut offset_fns_struct = Vec::new();
@@ -71,22 +87,29 @@ fn packet_impl(
     let mut mutators = vec![];
     let mut populate = vec![];
     let mut payload_bounds = PayloadBounds {
-        lower: "0".into(),
-        upper: "0".into(),
+        lower: quote!(0),
+        upper: quote!(0),
     };
     for field in &packet.fields {
         let field_name = format_ident!("{}", field.name);
         let get_field_name = format_ident!("get_{}", field.name);
         let set_field_name = format_ident!("set_{}", field.name);
         let mut co = current_offset(bit_offset, &offset_fns_packet[..]);
+        let packet_length = if let Some(packet_length) = field.packet_length.as_ref() {
+            let packet_length = syn::parse_str::<syn::Expr>(&packet_length)?;
+            quote!(#packet_length)
+        } else {
+            quote!(0)
+        };
         if field.is_payload {
-            let mut upper_bound_str = "".to_owned();
-            if let Some(packet_length) = field.packet_length.as_ref() {
-                upper_bound_str = format!("{} + {}", co.clone(), packet_length);
-            }
+            let upper_bound = if field.packet_length.is_some() {
+                quote!(#co + #packet_length)
+            } else {
+                quote!(0)
+            };
             payload_bounds = PayloadBounds {
                 lower: co.clone(),
-                upper: upper_bound_str,
+                upper: upper_bound,
             };
         }
         match field.ty {
@@ -97,12 +120,6 @@ fn packet_impl(
                 bit_offset += size;
             }
             Type::Vector(ref inner_ty) => {
-                let packet_length = if let Some(packet_length) = field.packet_length.as_ref() {
-                    let packet_length = syn::parse_str::<syn::Expr>(&packet_length)?;
-                    quote!(#packet_length)
-                } else {
-                    quote!(0)
-                };
                 if !field.is_payload {
                     let get_field_name_raw = format_ident!("get_{}_raw", field.name);
                     let get_field_name_raw_mut = format_ident!("get_{}_raw_mut", field.name);
@@ -144,70 +161,65 @@ fn packet_impl(
                         let set_name = format_ident!("set_{}", field.name);
                         let ops = operations(0, size, Endianness::Big).unwrap();
                         let size = size / 8;
-                        if !field.is_payload {
-                            let access_ops = generate_accessor_op_str("packet", inner_ty_str, &ops);
-                            accessors.push(quote! {
-                                /// Get the value of the {name} field (copies contents)
-                                #[inline]
-                                #[allow(trivial_numeric_casts, unused_parens, unused_braces)]
-                                #[cfg_attr(feature = "clippy", allow(used_underscore_binding))]
-                                pub fn #get_name(&self) -> Vec<#inner_ty> {
-                                    use std::cmp::min;
-                                    let current_offset = #co;
-                                    let pkt_len = self.packet.len();
-                                    let end = min(current_offset + #packet_length, pkt_len);
+                        let access_ops = gen_get_ops("packet", inner_ty_str, &ops);
+                        accessors.push(quote! {
+                            /// Get the value of the {name} field (copies contents)
+                            #[inline]
+                            #[allow(trivial_numeric_casts, unused_parens, unused_braces)]
+                            #[cfg_attr(feature = "clippy", allow(used_underscore_binding))]
+                            pub fn #get_name(&self) -> Vec<#inner_ty> {
+                                use std::cmp::min;
+                                let current_offset = #co;
+                                let pkt_len = self.packet.len();
+                                let end = min(current_offset + #packet_length, pkt_len);
 
-                                    let packet = &self.packet[current_offset..end];
-                                    let mut vec: Vec<#inner_ty> = Vec::with_capacity(packet.len());
-                                    let mut co = 0;
-                                    for _ in 0..vec.capacity() {
-                                        vec.push(#access_ops);
-                                        co += #size;
-                                    }
-                                    vec
+                                let packet = &self.packet[current_offset..end];
+                                let mut vec: Vec<#inner_ty> = Vec::with_capacity(packet.len());
+                                let mut co = 0;
+                                for _ in 0..vec.capacity() {
+                                    vec.push(#access_ops);
+                                    co += #size;
                                 }
-                            });
-                            let check_len =
-                                if let Some(packet_length) = field.packet_length.as_ref() {
-                                    quote! {
-                                        let len = #packet_length;
-                                        assert!(vals.len() <= len);
-                                    }
-                                } else {
-                                    quote!()
-                                };
-                            let copy_vals = if inner_ty_str == "u8" {
-                                // Efficient copy_from_slice (memcpy)
-                                quote! {
-                                    _self.packet[current_offset..current_offset + vals.len()]
-                                        .copy_from_slice(vals);
+                                vec
+                            }
+                        });
+                        let check_len = if field.packet_length.is_some() {
+                            quote! {
+                                let len = #packet_length;
+                                assert!(vals.len() <= len);
+                            }
+                        } else {
+                            quote!()
+                        };
+                        let copy_vals = if inner_ty_str == "u8" {
+                            // Efficient copy_from_slice (memcpy)
+                            quote! {
+                                self.packet[current_offset..current_offset + vals.len()]
+                                    .copy_from_slice(vals);
+                            }
+                        } else {
+                            // e.g. Vec<u16> -> Vec<u8>
+                            let sop = gen_set_ops(&to_mutator(&ops));
+                            quote! {
+                                let mut co = current_offset;
+                                for i in 0..vals.len() {
+                                    let val = vals[i];
+                                    #sop
+                                    co += #size;
                                 }
-                            } else {
-                                // e.g. Vec<u16> -> Vec<u8>
-                                let sop = generate_sop_strings(&to_mutator(&ops));
-                                quote! {
-                                    let mut co = current_offset;
-                                    for i in 0..vals.len() {
-                                        let val = vals[i];
-                                        #sop
-                                        co += #size;
-                                    }
-                                }
-                            };
-
-                            mutators.push(quote! {
-                                /// Set the value of the {name} field (copies contents)
-                                #[inline]
-                                #[allow(trivial_numeric_casts)]
-                                #[cfg_attr(feature = "clippy", allow(used_underscore_binding))]
-                                pub fn #set_name(&mut self, vals: &[#inner_ty]) {
-                                    let mut _self = self;
-                                    let current_offset = #co;
-                                    #check_len
-                                    #copy_vals
-                               }
-                            });
-                        }
+                            }
+                        };
+                        mutators.push(quote! {
+                            /// Set the value of the {name} field (copies contents)
+                            #[inline]
+                            #[allow(trivial_numeric_casts)]
+                            #[cfg_attr(feature = "clippy", allow(used_underscore_binding))]
+                            pub fn #set_name(&mut self, vals: &[#inner_ty]) {
+                                let current_offset = #co;
+                                #check_len
+                                #copy_vals
+                           }
+                        });
                     }
                     Type::Vector(_) => {
                         return Err(Error::new(
@@ -221,6 +233,7 @@ fn packet_impl(
                         let get_name_iter = format_ident!("get_{}_iter", field.name);
                         let inner_ty_iterable = format_ident!("{}Iterable", inner_ty_str);
                         let inner_ty: syn::Type = syn::parse_str(inner_ty_str)?;
+                        let inner_ty_packet_mut = format_ident!("Mutable{}Packet", inner_ty_str);
                         accessors.push(quote! {
                             /// Get the value of the {name} field (copies contents)
                             #[inline]
@@ -236,11 +249,10 @@ fn packet_impl(
                             #[cfg_attr(feature = "clippy", allow(used_underscore_binding))]
                             pub fn #get_name_iter(&self) -> #inner_ty_iterable {
                                 use std::cmp::min;
-                                let _self = self;
                                 let current_offset = #co;
-                                let end = min(current_offset + #packet_length, _self.packet.len());
+                                let end = min(current_offset + #packet_length, self.packet.len());
                                 #inner_ty_iterable {
-                                    buf: &_self.packet[current_offset..end]
+                                    buf: &self.packet[current_offset..end]
                                 }
                             }
                         });
@@ -251,11 +263,10 @@ fn packet_impl(
                             #[cfg_attr(feature = "clippy", allow(used_underscore_binding))]
                             pub fn #set_name(&mut self, vals: &[#inner_ty]) {
                                 use libpacket_core::PacketSize;
-                                let _self = self;
                                 let mut current_offset = #co;
                                 let end = current_offset + #packet_length;
                                 for val in vals.into_iter() {
-                                    let mut packet = Mutable{inner_ty_str}Packet::new(&mut _self.packet[current_offset..]).unwrap()
+                                    let mut packet = #inner_ty_packet_mut::new(&mut self.packet[current_offset..]).unwrap()
                                     packet.populate(val);
                                     current_offset += packet.packet_size();
                                     assert!(current_offset <= end);
@@ -292,7 +303,7 @@ fn packet_impl(
                             Some(&name),
                         ));
                         get_args.push(quote!(#get_arg(&self)));
-                        set_args.push(quote!(#set_arg(_self, vals.#i)));
+                        set_args.push(quote!(#set_arg(self, vals.#i)));
                         bit_offset += size;
                         // Current offset needs to be recalculated for each arg
                         co = current_offset(bit_offset, &offset_fns_packet);
@@ -310,7 +321,6 @@ fn packet_impl(
                     #[cfg_attr(feature = "clippy", allow(used_underscore_binding))]
                     pub fn #set_field_name(&mut self, val: #ty) {
                         use libpacket_core::PrimitiveValues;
-                        let _self = self;
                         #(#inner_mutators)*
 
                         let vals = val.to_primitive_values();
@@ -337,7 +347,11 @@ fn packet_impl(
         if let Some(struct_length) = field.struct_length.clone() {
             offset_fns_struct.push(struct_length);
         }
-        populate.push(quote!(_self.#set_field_name(packet.#field_name);));
+        if let Type::Vector(_) = &field.ty {
+            populate.push(quote!(self.#set_field_name(&packet.#field_name);));
+        } else {
+            populate.push(quote!(self.#set_field_name(packet.#field_name);));
+        }
     }
 
     let populate = if mutable {
@@ -347,7 +361,6 @@ fn packet_impl(
             #[inline]
             #[cfg_attr(feature = "clippy", allow(used_underscore_binding))]
             pub fn populate(&mut self, packet: &#base_name) {
-                 let _self = self;
                  #(#populate)*
             }
         }
@@ -356,9 +369,9 @@ fn packet_impl(
     };
 
     let name = if mutable {
-        format_ident!("{}", packet.packet_name())
-    } else {
         format_ident!("{}", packet.packet_name_mut())
+    } else {
+        format_ident!("{}", packet.packet_name())
     };
     let base_name = format_ident!("{}", &packet.base_name);
     let struct_size = current_offset(bit_offset, &offset_fns_struct[..]);
@@ -374,6 +387,7 @@ fn packet_impl(
     } else {
         format_ident!("PacketData")
     };
+    let mutators = if mutable { mutators } else { vec![] };
 
     let tokens = quote! {
         impl<'a> #name<'a> {
@@ -450,12 +464,12 @@ fn packet_impl(
 fn gen_accessor(
     name: &str,
     ty_str: &str,
-    offset: &str,
+    offset: &proc_macro2::TokenStream,
     operations: &[GetOperation],
     inner: Option<&str>,
 ) -> proc_macro2::TokenStream {
     let get_name = format_ident!("get_{}", name);
-    let operations = generate_accessor_op_str("_self.packet", ty_str, operations);
+    let operations = gen_get_ops("self.packet", ty_str, operations);
     let ty: syn::Type = syn::parse_str(ty_str).unwrap();
 
     if let Some(struct_name) = inner {
@@ -463,7 +477,7 @@ fn gen_accessor(
             #[inline(always)]
             #[allow(trivial_numeric_casts, unused_parens)]
             #[cfg_attr(feature = "clippy", allow(used_underscore_binding))]
-            fn #get_name(_self: &#struct_name) -> #ty {
+            fn #get_name(self: &#struct_name) -> #ty {
                 let co = #offset;
                 #operations
             }
@@ -497,12 +511,12 @@ fn gen_accessor(
 fn gen_mutator(
     name: &str,
     ty_str: &str,
-    offset: &str,
+    offset: &proc_macro2::TokenStream,
     operations: &[SetOperation],
     inner: Option<&str>,
 ) -> proc_macro2::TokenStream {
     let set_name = format_ident!("set_{}", name);
-    let operations = generate_sop_strings(operations);
+    let operations = gen_set_ops(operations);
     let ty: syn::Type = syn::parse_str(ty_str).unwrap();
 
     if let Some(struct_name) = inner {
@@ -510,7 +524,7 @@ fn gen_mutator(
             #[inline]
             #[allow(trivial_numeric_casts)]
             #[cfg_attr(feature = "clippy", allow(used_underscore_binding))]
-            fn #set_name(_self: &mut #struct_name, val: #ty) {
+            fn #set_name(self: &mut #struct_name, val: #ty) {
                 let co = #offset;
                 #operations
             }
@@ -539,15 +553,16 @@ fn gen_mutator(
     }
 }
 
-pub fn packet_size_impls(packet: &Packet, size: &str) -> Result<proc_macro2::TokenStream, Error> {
-    let size = syn::parse_str::<syn::Expr>(&size)?;
+pub fn packet_size_impls(
+    packet: &Packet,
+    size: &proc_macro2::TokenStream,
+) -> Result<proc_macro2::TokenStream, Error> {
     let name = format_ident!("{}", packet.packet_name());
     let name_mut = format_ident!("{}", packet.packet_name_mut());
     Ok(quote! {
         impl<'a> libpacket_core::PacketSize for #name<'a> {
             #[cfg_attr(feature = "clippy", allow(used_underscore_binding))]
             fn packet_size(&self) -> usize {
-                let _self = self;
                 #size
             }
         }
@@ -555,7 +570,6 @@ pub fn packet_size_impls(packet: &Packet, size: &str) -> Result<proc_macro2::Tok
         impl<'a> libpacket_core::PacketSize for #name_mut<'a> {
             #[cfg_attr(feature = "clippy", allow(used_underscore_binding))]
             fn packet_size(&self) -> usize {
-                let _self = self;
                 #size
             }
         }
@@ -612,7 +626,6 @@ fn impl_packet_trait_for(
             #[inline]
             #[cfg_attr(feature = "clippy", allow(used_underscore_binding))]
             fn #payload<'p>(&'p #mut_ self) -> &'p #mut_ [u8] {
-                let _self = self;
                 let start = #lower;
                 let end = std::cmp::min(#upper, self.packet.len());
                 if self.packet.len() <= start {
@@ -676,7 +689,6 @@ pub fn converters(packet: &Packet) -> Result<proc_macro2::TokenStream, Error> {
             #[inline]
             fn from_packet(&self) -> #name {
                 use libpacket_core::Packet;
-                let _self = self;
                 #name {
                     #(#get_fields,)*
                 }
@@ -688,7 +700,6 @@ pub fn converters(packet: &Packet) -> Result<proc_macro2::TokenStream, Error> {
             #[inline]
             fn from_packet(&self) -> #name {
                 use libpacket_core::Packet;
-                let _self = self;
                 #name {
                     #(#get_fields,)*
                 }
@@ -710,9 +721,9 @@ pub fn debug_impls(packet: &Packet) -> Result<proc_macro2::TokenStream, Error> {
     }
 
     let packet_name = format_ident!("{}", packet.packet_name());
-    let packet_fmt_str = format!("{} {{ {} }}", packet.packet_name(), field_fmt_str);
+    let packet_fmt_str = format!("{} {{{{ {} }}}}", packet.packet_name(), field_fmt_str);
     let packet_name_mut = format_ident!("{}", packet.packet_name_mut());
-    let packet_mut_fmt_str = format!("{} {{ {} }}", packet.packet_name_mut(), field_fmt_str);
+    let packet_mut_fmt_str = format!("{} {{{{ {} }}}}", packet.packet_name_mut(), field_fmt_str);
     Ok(quote! {
         impl<'p> std::fmt::Debug for #packet_name<'p> {
             #[cfg_attr(feature = "clippy", allow(used_underscore_binding))]
@@ -730,10 +741,10 @@ pub fn debug_impls(packet: &Packet) -> Result<proc_macro2::TokenStream, Error> {
     })
 }
 
-fn generate_sop_strings(operations: &[SetOperation]) -> String {
+fn gen_set_ops(operations: &[SetOperation]) -> proc_macro2::TokenStream {
     let mut op_strings = String::new();
     for (idx, sop) in operations.iter().enumerate() {
-        let pkt_replace = format!("_self.packet[co + {}]", idx);
+        let pkt_replace = format!("self.packet[co + {}]", idx);
         let val_replace = "val";
         let sop = sop
             .to_string()
@@ -741,15 +752,15 @@ fn generate_sop_strings(operations: &[SetOperation]) -> String {
             .replace("{val}", val_replace);
         op_strings = op_strings + &sop[..] + ";\n";
     }
-
-    op_strings
+    let stmt = syn::parse_str::<syn::Expr>(&format!("{{{}}}", op_strings)).expect("gen_set_ops");
+    quote!(#stmt)
 }
 
 /// Used to turn something like a u16be into
-/// "let b0 = ((_self.packet[co + 0] as u16be) << 8) as u16be;
-///  let b1 = ((_self.packet[co + 1] as u16be) as u16be;
+/// "let b0 = ((self.packet[co + 0] as u16be) << 8) as u16be;
+///  let b1 = ((self.packet[co + 1] as u16be) as u16be;
 ///  b0 | b1"
-fn generate_accessor_op_str(name: &str, ty: &str, operations: &[GetOperation]) -> String {
+fn gen_get_ops(name: &str, ty: &str, operations: &[GetOperation]) -> proc_macro2::TokenStream {
     fn build_return(max: usize) -> String {
         let mut ret = "".to_owned();
         for i in 0..max {
@@ -779,36 +790,40 @@ fn generate_accessor_op_str(name: &str, ty: &str, operations: &[GetOperation]) -
 
         op_strings
     };
-
-    op_strings
+    let stmt = syn::parse_str::<syn::Expr>(&format!("{{{}}}", op_strings)).expect("gen_get_ops");
+    quote!(#stmt)
 }
 
 #[test]
-fn test_generate_accessor_op_str() {
+fn test_gen_get_ops() {
     {
         let ops = operations(0, 24, Endianness::Big).unwrap();
-        let result = generate_accessor_op_str("test", "u24be", &ops);
-        let expected = "let b0 = ((test[co + 0] as u24be) << 16) as u24be;\n\
-                    let b1 = ((test[co + 1] as u24be) << 8) as u24be;\n\
-                    let b2 = ((test[co + 2] as u24be)) as u24be;\n\n\
-                    b0 | b1 | b2\n";
+        let result = gen_get_ops("test", "u24be", &ops);
+        let expected = quote! {{
+            let b0 = ((test[co + 0] as u24be) << 16) as u24be;
+            let b1 = ((test[co + 1] as u24be) << 8) as u24be;
+            let b2 = ((test[co + 2] as u24be)) as u24be;
+            b0 | b1 | b2
+        }};
 
-        assert_eq!(result, expected);
+        assert_eq!(result.to_string(), expected.to_string());
     }
 
     {
         let ops = operations(0, 16, Endianness::Big).unwrap();
-        let result = generate_accessor_op_str("test", "u16be", &ops);
-        let expected = "let b0 = ((test[co + 0] as u16be) << 8) as u16be;\n\
-                    let b1 = ((test[co + 1] as u16be)) as u16be;\n\n\
-                    b0 | b1\n";
-        assert_eq!(result, expected);
+        let result = gen_get_ops("test", "u16be", &ops);
+        let expected = quote! {{
+            let b0 = ((test[co + 0] as u16be) << 8) as u16be;
+            let b1 = ((test[co + 1] as u16be)) as u16be;
+            b0 | b1
+        }};
+        assert_eq!(result.to_string(), expected.to_string());
     }
 
     {
         let ops = operations(0, 8, Endianness::Big).unwrap();
-        let result = generate_accessor_op_str("test", "u8", &ops);
-        let expected = "(test[co] as u8)";
-        assert_eq!(result, expected);
+        let result = gen_get_ops("test", "u8", &ops);
+        let expected = quote!({ (test[co] as u8) });
+        assert_eq!(result.to_string(), expected.to_string());
     }
 }

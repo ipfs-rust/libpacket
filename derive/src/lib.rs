@@ -173,20 +173,20 @@ fn generate_packet(s: &syn::DataStruct, name: String) -> Result<proc_macro2::Tok
     let packet = parse::packet(s, name)?;
     let structs = gen::packet_struct(&packet);
     let (ts_packet_impls, payload_bounds, packet_size) = gen::packet_impls(&packet)?;
-    let ts_size_impls = gen::packet_size_impls(&packet, &packet_size)?;
     let ts_trait_impls = gen::packet_trait_impls(&packet, &payload_bounds)?;
+    let ts_size_impls = gen::packet_size_impls(&packet, &packet_size)?;
     let ts_iterables = gen::iterables(&packet)?;
     let ts_converters = gen::converters(&packet)?;
     let ts_debug_impls = gen::debug_impls(&packet)?;
     let tts = quote! {
         #structs
         #ts_packet_impls
-        #ts_size_impls
         #ts_trait_impls
+        #ts_size_impls
         #ts_iterables
         #ts_converters
         #ts_debug_impls
     };
-    println!("{}", tts);
+    //println!("{}", tts.to_string());
     Ok(tts)
 }

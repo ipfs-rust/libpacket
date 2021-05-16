@@ -231,7 +231,7 @@ fn parse_length_expr(
         match tt_token {
             TokenTree::Ident(name) => {
                 if field_names.contains(&name.to_string()) {
-                    let tts: syn::Expr = syn::parse_str(&format!("_self.get_{}()", name))?;
+                    let tts: syn::Expr = syn::parse_str(&format!("self.get_{}()", name))?;
                     let mut modified_packet_tokens: Vec<_> =
                         tts.to_token_stream().into_iter().collect();
                     tokens_packet.append(&mut modified_packet_tokens);
