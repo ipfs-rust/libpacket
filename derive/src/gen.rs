@@ -60,13 +60,14 @@ pub fn packet_impls(
     Ok((tokens, bounds, size))
 }
 
-fn current_offset(bit_offset: usize, offset_fns: &[String]) -> proc_macro2::TokenStream {
+fn current_offset(
+    bit_offset: usize,
+    offset_fns: &[proc_macro2::TokenStream],
+) -> proc_macro2::TokenStream {
     let base_offset = bit_offset / 8;
-    let offset = offset_fns
+    offset_fns
         .iter()
-        .fold(base_offset.to_string(), |a, b| a + " + " + &b[..]);
-    let offset = syn::parse_str::<syn::Expr>(&offset).unwrap();
-    quote!(#offset)
+        .fold(quote!(#base_offset), |a, b| quote!(#a + #b))
 }
 
 fn packet_impl(
@@ -101,6 +102,10 @@ fn packet_impl(
         let set_field_name = format_ident!("set_{}", field.name);
         let mut co = current_offset(bit_offset, &offset_fns_packet[..]);
         let packet_length = if let Some(packet_length) = field.packet_length.as_ref() {
+            let packet_length = packet_length.replace(
+                "r#field_offset",
+                &format!("&self.packet[({})..]", co.to_string()),
+            );
             let packet_length = syn::parse_str::<syn::Expr>(&packet_length)?;
             quote!(#packet_length)
         } else {
@@ -354,11 +359,11 @@ fn packet_impl(
                 });
             }
         }
-        if let Some(packet_length) = field.packet_length.clone() {
+        if field.packet_length.is_some() {
             offset_fns_packet.push(packet_length);
         }
         if let Some(struct_length) = field.struct_length.clone() {
-            offset_fns_struct.push(struct_length);
+            offset_fns_struct.push(syn::parse_str(&struct_length)?);
         }
         if let Type::Vector(_) = &field.ty {
             populate.push(quote!(self.#set_field_name(&packet.#field_name);));

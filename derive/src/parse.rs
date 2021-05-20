@@ -102,8 +102,11 @@ pub fn packet(s: &syn::DataStruct, name: String) -> Result<Packet, Error> {
                                     })
                                     .collect();
                                 // Convert to tokens
-                                let expr = s.parse::<syn::Expr>()?;
-                                let tts = expr.to_token_stream();
+                                let s2 =
+                                    format!("\"{}\"", s.value().replace("...", "r#field_offset"));
+                                let mut s2 = syn::parse_str::<syn::LitStr>(&s2)?;
+                                s2.set_span(s.span());
+                                let tts = s2.parse::<syn::Expr>()?.to_token_stream();
                                 let tt_tokens: Vec<_> = tts.into_iter().collect();
                                 // Parse and replace fields
                                 let tokens_packet = parse_length_expr(&tt_tokens, &field_names)?;

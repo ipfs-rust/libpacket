@@ -186,11 +186,16 @@ pub fn packet_number(bytes: &[u8]) -> u64 {
     u64::from_be_bytes(pn)
 }
 
-#[derive(Debug, Packet)]
-pub struct Varint {
-    varint_1: u8,
-    #[length = "varint_length(varint_1)"]
-    varint_2: Vec<u8>,
+pub fn n_varints(n: usize, mut bytes: &[u8]) -> usize {
+    let mut length = 0;
+    for _ in 0..n {
+        let prefix = bytes[0] >> 6;
+        let vlen = 1 << prefix;
+        length += vlen;
+        let (_, rest) = bytes.split_at(vlen);
+        bytes = rest;
+    }
+    length
 }
 
 #[derive(Debug, Packet)]
@@ -524,7 +529,6 @@ impl<'a> Frame<'a> {
                 FrameTypes::HandshakeDone => Self::HandshakeDone(HandshakeDonePacket::new(packet)?),
                 _ => return None,
             };
-            println!("{:x?}", frame);
             // lifetime of payload is 'a so this is safe to do.
             packet = unsafe { std::mem::transmute(frame.remaining()) };
             match (frames.last_mut(), frame) {
@@ -647,10 +651,10 @@ pub struct Ack {
     first_ack_range_1: u8,
     #[length = "varint_length(first_ack_range_1)"]
     first_ack_range_2: Vec<u8>,
-    #[length = "varint(ack_range_count_1, &ack_range_count_2)"]
-    ack_range: Vec<Varint>,
-    #[length = "if ty.0 == 0x03 { 3 } else { 0 }"]
-    ecn_counts: Vec<Varint>,
+    #[length = "n_varints(varint(ack_range_count_1, &ack_range_count_2), ...)"]
+    ack_range: Vec<u8>,
+    #[length = "n_varints(if ty.0 == 0x03 { 3 } else { 0 }, ...)"]
+    ecn_counts: Vec<u8>,
     remaining: Vec<u8>,
 }
 
@@ -717,12 +721,12 @@ pub struct Stream {
     stream_id_1: u8,
     #[length = "varint_length(stream_id_1)"]
     stream_id_2: Vec<u8>,
-    #[length = "if ty.0 & 0x04 > 0 { 1 } else { 0 }"]
-    offset: Vec<Varint>,
-    #[length = "if ty.0 & 0x02 > 0 { 1 } else { 0 }"]
-    length: Vec<Varint>,
+    #[length = "n_varints(if ty.0 & 0x04 > 0 { 1 } else { 0 }, ...)"]
+    offset: Vec<u8>,
+    #[length = "n_varints(if ty.0 & 0x02 > 0 { 1 } else { 0 }, ...)"]
+    length: Vec<u8>,
     #[payload]
-    #[length = "if length.is_empty() { 2000 } else { varint(length[0].varint_1, &length[0].varint_2) }"]
+    #[length = "if length.is_empty() { (...).len() } else { varint(length[0], &length[1..]) }"]
     stream_data: Vec<u8>,
     remaining: Vec<u8>,
 }
@@ -846,8 +850,8 @@ pub struct ConnectionClose {
     error_code_1: u8,
     #[length = "varint_length(error_code_1)"]
     error_code_2: Vec<u8>,
-    #[length = "if ty.0 == 0x1d { 0 } else { 1 }"]
-    frame_type: Vec<Varint>,
+    #[length = "n_varints(if ty.0 == 0x1d { 0 } else { 1 }, ...)"]
+    frame_type: Vec<u8>,
     reason_phrase_length_1: u8,
     #[length = "varint_length(reason_phrase_length_1)"]
     reason_phrase_length_2: Vec<u8>,
@@ -928,7 +932,7 @@ impl std::fmt::Display for FrameType {
             &FrameTypes::StopSending => "stop-sending",
             &FrameTypes::Crypto => "crypto",
             &FrameTypes::NewToken => "new-token",
-            x if (0x8..0xf).contains(&x.0) => "stream",
+            x if (0x8..=0xf).contains(&x.0) => "stream",
             &FrameTypes::MaxData => "max-data",
             &FrameTypes::MaxStreamData => "max-stream-data",
             &FrameTypes::MaxStreams0 | &FrameTypes::MaxStreams1 => "max-streams",
