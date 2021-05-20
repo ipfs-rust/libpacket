@@ -1,7 +1,11 @@
 [package]
 name = "libpacket-derive"
-version = "0.1.0"
-authors = ["Robert Clipsham <robert@octarineparrot.com>", "Pierre Chifflier <chifflier@wzdftpd.net>"]
+version = "0.1.1"
+authors = [
+    "David Craven <david@craven.ch>",
+    "Robert Clipsham <robert@octarineparrot.com>",
+    "Pierre Chifflier <chifflier@wzdftpd.net>",
+]
 edition = "2018"
 license = "MIT/Apache-2.0"
 homepage = "https://github.com/libpnet/libpnet"
