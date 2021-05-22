@@ -166,15 +166,15 @@ impl<'a> std::fmt::Display for QuicPacket<'a> {
     }
 }
 
-pub fn varint_length(first_byte: u8) -> usize {
-    let prefix = first_byte >> 6;
-    let length = (1 << prefix) - 1;
+pub fn varint_length(rest: &[u8]) -> usize {
+    let prefix = rest[0] >> 6;
+    let length = 1 << prefix;
     length
 }
 
-pub fn varint(first_byte: u8, rest: &[u8]) -> usize {
-    let mut length = (first_byte & 0x3f) as u64;
-    for v in rest {
+pub fn varint(bytes: &[u8]) -> usize {
+    let mut length = (bytes[0] & 0x3f) as u64;
+    for v in &bytes[1..] {
         length = (length << 8) + *v as u64;
     }
     length as usize
@@ -231,17 +231,15 @@ pub struct Initial {
     src_id_len: u8,
     #[length = "src_id_len"]
     src_id: Vec<u8>,
-    token_length_1: u8,
-    #[length = "varint_length(token_length_1)"]
-    token_length_2: Vec<u8>,
-    #[length = "varint(token_length_1, &token_length_2)"]
+    #[length = "varint_length(...)"]
+    token_length: Vec<u8>,
+    #[length = "varint(&token_length)"]
     token: Vec<u8>,
-    length_1: u8,
-    #[length = "varint_length(length_1)"]
-    length_2: Vec<u8>,
+    #[length = "varint_length(...)"]
+    length: Vec<u8>,
     #[length = "packet_number_len + 1"]
     packet_number: Vec<u8>,
-    #[length = "varint(length_1, &length_2) - packet_number.len()"]
+    #[length = "varint(&length) - packet_number.len()"]
     frames: Vec<u8>,
     remaining: Vec<u8>,
 }
@@ -264,12 +262,11 @@ pub struct ZeroRtt {
     src_id_len: u8,
     #[length = "src_id_len"]
     src_id: Vec<u8>,
-    length_1: u8,
-    #[length = "varint_length(length_1)"]
-    length_2: Vec<u8>,
+    #[length = "varint_length(...)"]
+    length: Vec<u8>,
     #[length = "packet_number_len + 1"]
     packet_number: Vec<u8>,
-    #[length = "varint(length_1, &length_2) - packet_number.len()"]
+    #[length = "varint(&length) - packet_number.len()"]
     frames: Vec<u8>,
     remaining: Vec<u8>,
 }
@@ -292,12 +289,11 @@ pub struct Handshake {
     src_id_len: u8,
     #[length = "src_id_len"]
     src_id: Vec<u8>,
-    length_1: u8,
-    #[length = "varint_length(length_1)"]
-    length_2: Vec<u8>,
+    #[length = "varint_length(...)"]
+    length: Vec<u8>,
     #[length = "packet_number_len + 1"]
     packet_number: Vec<u8>,
-    #[length = "varint(length_1, &length_2) - packet_number.len()"]
+    #[length = "varint(&length) - packet_number.len()"]
     frames: Vec<u8>,
     remaining: Vec<u8>,
 }
@@ -639,19 +635,15 @@ pub struct Ping {
 pub struct Ack {
     #[construct_with(u8)]
     ty: FrameType,
-    largest_acknowledged_1: u8,
-    #[length = "varint_length(largest_acknowledged_1)"]
-    largest_acknowledged_2: Vec<u8>,
-    ack_delay_1: u8,
-    #[length = "varint_length(ack_delay_1)"]
-    ack_delay_2: Vec<u8>,
-    ack_range_count_1: u8,
-    #[length = "varint_length(ack_range_count_1)"]
-    ack_range_count_2: Vec<u8>,
-    first_ack_range_1: u8,
-    #[length = "varint_length(first_ack_range_1)"]
-    first_ack_range_2: Vec<u8>,
-    #[length = "n_varints(varint(ack_range_count_1, &ack_range_count_2), ...)"]
+    #[length = "varint_length(...)"]
+    largest_acknowledged: Vec<u8>,
+    #[length = "varint_length(...)"]
+    ack_delay: Vec<u8>,
+    #[length = "varint_length(...)"]
+    ack_range_count: Vec<u8>,
+    #[length = "varint_length(...)"]
+    first_ack_range: Vec<u8>,
+    #[length = "n_varints(varint(&ack_range_count), ...)"]
     ack_range: Vec<u8>,
     #[length = "n_varints(if ty.0 == 0x03 { 3 } else { 0 }, ...)"]
     ecn_counts: Vec<u8>,
@@ -662,15 +654,12 @@ pub struct Ack {
 pub struct ResetStream {
     #[construct_with(u8)]
     ty: FrameType,
-    stream_id_1: u8,
-    #[length = "varint_length(stream_id_1)"]
-    stream_id_2: Vec<u8>,
-    application_protocol_error_code_1: u8,
-    #[length = "varint_length(application_protocol_error_code_1)"]
-    application_protocol_error_code_2: Vec<u8>,
-    final_size_1: u8,
-    #[length = "varint_length(final_size_1)"]
-    final_size_2: Vec<u8>,
+    #[length = "varint_length(...)"]
+    stream_id: Vec<u8>,
+    #[length = "varint_length(...)"]
+    application_protocol_error_code: Vec<u8>,
+    #[length = "varint_length(...)"]
+    final_size: Vec<u8>,
     remaining: Vec<u8>,
 }
 
@@ -678,12 +667,10 @@ pub struct ResetStream {
 pub struct StopSending {
     #[construct_with(u8)]
     ty: FrameType,
-    stream_id_1: u8,
-    #[length = "varint_length(stream_id_1)"]
-    stream_id_2: Vec<u8>,
-    application_protocol_error_code_1: u8,
-    #[length = "varint_length(application_protocol_error_code_1)"]
-    application_protocol_error_code_2: Vec<u8>,
+    #[length = "varint_length(...)"]
+    stream_id: Vec<u8>,
+    #[length = "varint_length(...)"]
+    application_protocol_error_code: Vec<u8>,
     remaining: Vec<u8>,
 }
 
@@ -691,13 +678,11 @@ pub struct StopSending {
 pub struct Crypto {
     #[construct_with(u8)]
     ty: FrameType,
-    offset_1: u8,
-    #[length = "varint_length(offset_1)"]
-    offset_2: Vec<u8>,
-    length_1: u8,
-    #[length = "varint_length(length_1)"]
-    length_2: Vec<u8>,
-    #[length = "varint(length_1, &length_2)"]
+    #[length = "varint_length(...)"]
+    offset: Vec<u8>,
+    #[length = "varint_length(...)"]
+    length: Vec<u8>,
+    #[length = "varint(&length)"]
     crypto_payload: Vec<u8>,
     remaining: Vec<u8>,
 }
@@ -706,10 +691,9 @@ pub struct Crypto {
 pub struct NewToken {
     #[construct_with(u8)]
     ty: FrameType,
-    token_length_1: u8,
-    #[length = "varint_length(token_length_1)"]
-    token_length_2: Vec<u8>,
-    #[length = "varint(token_length_1, &token_length_2)"]
+    #[length = "varint_length(...)"]
+    token_length: Vec<u8>,
+    #[length = "varint(&token_length)"]
     token: Vec<u8>,
     remaining: Vec<u8>,
 }
@@ -718,15 +702,14 @@ pub struct NewToken {
 pub struct Stream {
     #[construct_with(u8)]
     ty: FrameType,
-    stream_id_1: u8,
-    #[length = "varint_length(stream_id_1)"]
-    stream_id_2: Vec<u8>,
+    #[length = "varint_length(...)"]
+    stream_id: Vec<u8>,
     #[length = "n_varints(if ty.0 & 0x04 > 0 { 1 } else { 0 }, ...)"]
     offset: Vec<u8>,
     #[length = "n_varints(if ty.0 & 0x02 > 0 { 1 } else { 0 }, ...)"]
     length: Vec<u8>,
     #[payload]
-    #[length = "if length.is_empty() { (...).len() } else { varint(length[0], &length[1..]) }"]
+    #[length = "if length.is_empty() { (...).len() } else { varint(&length) }"]
     stream_data: Vec<u8>,
     remaining: Vec<u8>,
 }
@@ -735,9 +718,8 @@ pub struct Stream {
 pub struct MaxData {
     #[construct_with(u8)]
     ty: FrameType,
-    max_data_1: u8,
-    #[length = "varint_length(max_data_1)"]
-    max_data_2: Vec<u8>,
+    #[length = "varint_length(...)"]
+    max_data: Vec<u8>,
     remaining: Vec<u8>,
 }
 
@@ -745,12 +727,10 @@ pub struct MaxData {
 pub struct MaxStreamData {
     #[construct_with(u8)]
     ty: FrameType,
-    stream_id_1: u8,
-    #[length = "varint_length(stream_id_1)"]
-    stream_id_2: Vec<u8>,
-    max_stream_data_1: u8,
-    #[length = "varint_length(max_stream_data_1)"]
-    max_stream_data_2: Vec<u8>,
+    #[length = "varint_length(...)"]
+    stream_id: Vec<u8>,
+    #[length = "varint_length(...)"]
+    max_stream_data: Vec<u8>,
     remaining: Vec<u8>,
 }
 
@@ -758,9 +738,8 @@ pub struct MaxStreamData {
 pub struct MaxStreams {
     #[construct_with(u8)]
     ty: FrameType,
-    max_streams_1: u8,
-    #[length = "varint_length(max_streams_1)"]
-    max_streams_2: Vec<u8>,
+    #[length = "varint_length(...)"]
+    max_streams: Vec<u8>,
     remaining: Vec<u8>,
 }
 
@@ -768,9 +747,8 @@ pub struct MaxStreams {
 pub struct DataBlocked {
     #[construct_with(u8)]
     ty: FrameType,
-    max_data_1: u8,
-    #[length = "varint_length(max_data_1)"]
-    max_data_2: Vec<u8>,
+    #[length = "varint_length(...)"]
+    max_data: Vec<u8>,
     remaining: Vec<u8>,
 }
 
@@ -778,12 +756,10 @@ pub struct DataBlocked {
 pub struct StreamDataBlocked {
     #[construct_with(u8)]
     ty: FrameType,
-    stream_id_1: u8,
-    #[length = "varint_length(stream_id_1)"]
-    stream_id_2: Vec<u8>,
-    max_stream_data_1: u8,
-    #[length = "varint_length(max_stream_data_1)"]
-    max_stream_data_2: Vec<u8>,
+    #[length = "varint_length(...)"]
+    stream_id: Vec<u8>,
+    #[length = "varint_length(...)"]
+    max_stream_data: Vec<u8>,
     remaining: Vec<u8>,
 }
 
@@ -791,9 +767,8 @@ pub struct StreamDataBlocked {
 pub struct StreamsBlocked {
     #[construct_with(u8)]
     ty: FrameType,
-    max_streams_1: u8,
-    #[length = "varint_length(max_streams_1)"]
-    max_streams_2: Vec<u8>,
+    #[length = "varint_length(...)"]
+    max_streams: Vec<u8>,
     remaining: Vec<u8>,
 }
 
@@ -801,12 +776,10 @@ pub struct StreamsBlocked {
 pub struct NewConnectionId {
     #[construct_with(u8)]
     ty: FrameType,
-    sequence_number_1: u8,
-    #[length = "varint_length(sequence_number_1)"]
-    sequence_number_2: Vec<u8>,
-    retire_prior_to_1: u8,
-    #[length = "varint_length(retire_prior_to_1)"]
-    retire_prior_to_2: Vec<u8>,
+    #[length = "varint_length(...)"]
+    sequence_number: Vec<u8>,
+    #[length = "varint_length(...)"]
+    retire_prior_to: Vec<u8>,
     length: u8,
     #[length = "length"]
     connection_id: Vec<u8>,
@@ -819,9 +792,8 @@ pub struct NewConnectionId {
 pub struct RetireConnectionId {
     #[construct_with(u8)]
     ty: FrameType,
-    sequence_number_1: u8,
-    #[length = "varint_length(sequence_number_1)"]
-    sequence_number_2: Vec<u8>,
+    #[length = "varint_length(...)"]
+    sequence_number: Vec<u8>,
     remaining: Vec<u8>,
 }
 
@@ -847,15 +819,13 @@ pub struct PathResponse {
 pub struct ConnectionClose {
     #[construct_with(u8)]
     ty: FrameType,
-    error_code_1: u8,
-    #[length = "varint_length(error_code_1)"]
-    error_code_2: Vec<u8>,
+    #[length = "varint_length(...)"]
+    error_code: Vec<u8>,
     #[length = "n_varints(if ty.0 == 0x1d { 0 } else { 1 }, ...)"]
     frame_type: Vec<u8>,
-    reason_phrase_length_1: u8,
-    #[length = "varint_length(reason_phrase_length_1)"]
-    reason_phrase_length_2: Vec<u8>,
-    #[length = "varint(reason_phrase_length_1, &reason_phrase_length_2)"]
+    #[length = "varint_length(...)"]
+    reason_phrase_length: Vec<u8>,
+    #[length = "varint(&reason_phrase_length)"]
     reason_phrase: Vec<u8>,
     remaining: Vec<u8>,
 }
