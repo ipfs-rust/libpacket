@@ -8,8 +8,14 @@ use crate::PrimitiveValues;
 use std::fmt;
 use std::mem::transmute;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone)]
 pub struct Setup((u8, u8, u8, u8, u8, u8, u8, u8));
+
+impl fmt::Debug for Setup {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f,"Setup {:x?}", self.0)
+    }
+}
 
 impl Setup {
     fn new(a: u8, b: u8, c: u8, d: u8, e: u8, f: u8, g: u8, h: u8) -> Self {
@@ -24,37 +30,6 @@ impl PrimitiveValues for Setup {
         (tup.0, tup.1, tup.2, tup.3, tup.4, tup.5, tup.6, tup.7)
     }
 }
-
-// #[derive(Debug)]
-// pub enum UsbPacket<'pkt> {
-//     Ctl(ControlPacket<'pkt>),
-//     Blk(BulkPacket<'pkt>),
-//     Isoch(IsochPacket<'pkt>),
-//     Interr(InterrPacket<'pkt>),
-// }
-// impl<'pkt> std::fmt::Display for TransferPacket<'pkt> {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         use TransferPacket::*;
-//         match self {
-//             Ctl(ctl) => {
-//                 writeln!(f, "Control Transfer")?;
-//                 write!(f, "{}", ctl)
-//             }
-//             Blk(blk) => {
-//                 writeln!(f, "Bulk Transfer")?;
-//                 write!(f, "{}", bulk)
-//             }
-//             Isoch(isoch) => {
-//                 writeln!(f, "Isochronous Transfer")?;
-//                 write!(f, "{}", isoch)
-//             }
-//             Interr(interr) => {
-//                 writeln!(f, "Control Transfer")?;
-//                 write!(f, "{}", interr)
-//             }
-//         }
-//     }
-// }
 
 macro_rules! display1 {
     ($id:ident) => {
@@ -88,14 +63,6 @@ macro_rules! display1 {
         }
     };
 }
-
-// macro_rules! display2 {
-//     ($id:ident) => {
-//         impl<'pkt> fmt::Display for $id<'pkt> {
-//             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {}
-//         }
-//     };
-// }
 
 impl<'pkt> fmt::Display for UsbMonPacket<'pkt> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -215,7 +182,7 @@ impl<'pkt> UsbMonPacket<'pkt> {
     }
 }
 
-#[derive(Clone, Debug, Packet)]
+#[derive(Debug, Packet)]
 pub struct Device {
     length: u8,
     descriptor_type: u8,
@@ -276,6 +243,7 @@ pub struct Endpoint {
     payload: Vec<u8>,
 }
 
+#[derive(Debug)]
 pub enum DescriptorPacket<'pkt> {
     Dev(DevicePacket<'pkt>),
     Cfg(ConfigPacket<'pkt>),
@@ -300,9 +268,18 @@ impl<'pkt> DescriptorPacket<'pkt> {
         use DescriptorPacket::*;
         matches!(self, Ep(_))
     }
+    pub fn payload(&self) -> &[u8] {
+        use DescriptorPacket::*;
+        match self {
+            Dev(dev) => {dev.payload()},
+            Cfg(cfg) => {cfg.payload()},
+            If(interf) => {interf.payload()},
+            Ep(ep) => {ep.payload()},
+        }
+    }
     pub fn new(pkt: &'pkt [u8]) -> Option<Self> {
         use DescriptorPacket::*;
-        let desc = match pkt[1] {
+        let desc = match pkt.get(1)? {
             0x01 => Dev(DevicePacket::new(pkt)?),
             0x02 => Cfg(ConfigPacket::new(pkt)?),
             0x04 => If(InterfacePacket::new(pkt)?),
@@ -334,6 +311,31 @@ pub enum XferPacket<'pkt> {
 }
 
 impl<'pkt> XferPacket<'pkt> {
+    pub fn payload(&self) -> &[u8] {
+        use XferPacket::*;
+        match self {
+            Ctl(_,ctl) => ctl,
+            Blk(_,ctl) => ctl,
+            Isochr(_,ctl) => ctl,
+            Interr(_,ctl) => ctl,
+        }
+    }
+    // pub fn is_control(&self) -> bool {
+    //     use XferPacket::*;
+    //     matches!(self, Ctl(_))
+    // }
+    // pub fn is_bulk(&self) -> bool {
+    //     use XferPacket::*;
+    //     matches!(self, Blk(_))
+    // }
+    // pub fn is_isochronous(&self) -> bool {
+    //     use XferPacket::*;
+    //     matches!(self, Isochr(_))
+    // }
+    // pub fn is_interrupt(&self) -> bool {
+    //     use XferPacket::*;
+    //     matches!(self, Interr(_))
+    // }
     pub fn new(pkt: &'pkt [u8]) -> Option<Self> {
         UsbMonPacket::new(pkt)
             .map(|usbmon| usbmon.into_xfer_packet())
