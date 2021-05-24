@@ -13,7 +13,7 @@ pub struct Setup((u8, u8, u8, u8, u8, u8, u8, u8));
 
 impl fmt::Debug for Setup {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f,"Setup {:x?}", self.0)
+        write!(f, "Setup {:x?}", self.0)
     }
 }
 
@@ -199,7 +199,7 @@ pub struct Device {
     serial_number: u8,
     number_configurations: u8,
     #[payload]
-    payload: Vec<u8>
+    payload: Vec<u8>,
 }
 
 #[derive(Clone, Debug, Packet)]
@@ -213,7 +213,7 @@ pub struct Config {
     attributes: u8,
     max_power: u8,
     #[payload]
-    payload: Vec<u8>
+    payload: Vec<u8>,
 }
 
 #[derive(Packet)]
@@ -228,7 +228,7 @@ pub struct Interface {
     interface_protocol: u8,
     interface: u8,
     #[payload]
-    payload: Vec<u8>
+    payload: Vec<u8>,
 }
 
 #[derive(Packet)]
@@ -271,10 +271,10 @@ impl<'pkt> DescriptorPacket<'pkt> {
     pub fn payload(&self) -> &[u8] {
         use DescriptorPacket::*;
         match self {
-            Dev(dev) => {dev.payload()},
-            Cfg(cfg) => {cfg.payload()},
-            If(interf) => {interf.payload()},
-            Ep(ep) => {ep.payload()},
+            Dev(dev) => dev.payload(),
+            Cfg(cfg) => cfg.payload(),
+            If(interf) => interf.payload(),
+            Ep(ep) => ep.payload(),
         }
     }
     pub fn new(pkt: &'pkt [u8]) -> Option<Self> {
@@ -314,20 +314,20 @@ impl<'pkt> XferPacket<'pkt> {
     pub fn payload(&self) -> &[u8] {
         use XferPacket::*;
         match self {
-            Ctl(_,ctl) => ctl,
-            Blk(_,ctl) => ctl,
-            Isochr(_,ctl) => ctl,
-            Interr(_,ctl) => ctl,
+            Ctl(_, ctl) => ctl,
+            Blk(_, ctl) => ctl,
+            Isochr(_, ctl) => ctl,
+            Interr(_, ctl) => ctl,
         }
     }
-    // pub fn is_control(&self) -> bool {
-    //     use XferPacket::*;
-    //     matches!(self, Ctl(_))
-    // }
-    // pub fn is_bulk(&self) -> bool {
-    //     use XferPacket::*;
-    //     matches!(self, Blk(_))
-    // }
+    pub fn is_control(&self) -> bool {
+        use XferPacket::*;
+        matches!(self, Ctl(_,_))
+    }
+    pub fn is_bulk(&self) -> bool {
+        use XferPacket::*;
+        matches!(self, Blk(_,_))
+    }
     // pub fn is_isochronous(&self) -> bool {
     //     use XferPacket::*;
     //     matches!(self, Isochr(_))
