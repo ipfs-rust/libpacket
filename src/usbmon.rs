@@ -8,7 +8,7 @@ use crate::PrimitiveValues;
 use std::fmt;
 use std::mem::transmute;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct Setup((u8, u8, u8, u8, u8, u8, u8, u8));
 
 impl fmt::Debug for Setup {
@@ -322,11 +322,11 @@ impl<'pkt> XferPacket<'pkt> {
     }
     pub fn is_control(&self) -> bool {
         use XferPacket::*;
-        matches!(self, Ctl(_,_))
+        matches!(self, Ctl(_, _))
     }
     pub fn is_bulk(&self) -> bool {
         use XferPacket::*;
-        matches!(self, Blk(_,_))
+        matches!(self, Blk(_, _))
     }
     // pub fn is_isochronous(&self) -> bool {
     //     use XferPacket::*;

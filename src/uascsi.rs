@@ -137,24 +137,12 @@ impl<'pkt> UASPacket<'pkt> {
     pub fn payload(&self) -> &[u8] {
         use UASPacket::*;
         match self {
-            Cmd(cmdpkt) => {
-                cmdpkt.payload()
-            },
-            RdRdy(rdpkt) => {
-                rdpkt.payload()
-            },
-            WrRdy(wrpkt) => {
-                wrpkt.payload()
-            },
-            Sns(snspkt) => {
-                snspkt.payload()
-            },
-            Rsp(rsppkt) => {
-                rsppkt.payload()
-            },
-            TskMng(tskmngpkt) => {
-                tskmngpkt.payload()
-            },
+            Cmd(cmdpkt) => cmdpkt.payload(),
+            RdRdy(rdpkt) => rdpkt.payload(),
+            WrRdy(wrpkt) => wrpkt.payload(),
+            Sns(snspkt) => snspkt.payload(),
+            Rsp(rsppkt) => rsppkt.payload(),
+            TskMng(tskmngpkt) => tskmngpkt.payload(),
             // _ => unreachable!(),
         }
     }

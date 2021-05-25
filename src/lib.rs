@@ -26,6 +26,7 @@ pub mod tcp;
 pub mod uascsi;
 pub mod udp;
 pub mod usbmon;
+pub mod usbpcap;
 pub mod vlan;
 
 pub mod util;
